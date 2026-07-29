@@ -404,6 +404,8 @@
                                                 <!-- Copy Merged Tags Action Button -->
                                                 <button type="button"
                                                         @click="copyMergedTags(post, cluster.posts)"
+                                                        @mouseenter="setHoveredMergedTags(cluster.cluster_id, post, cluster.posts)"
+                                                        @mouseleave="clearHoveredMergedTags()"
                                                         class="text-gray-500 hover:text-gray-300 hover:bg-gray-800/60 border border-transparent hover:border-gray-700/60 text-[10px] px-1.5 py-0.5 rounded transition flex items-center gap-1 active:scale-95 shadow-sm">
                                                     <span>📋 Copy Merged Tags</span>
                                                     
@@ -427,8 +429,31 @@
                                             <!-- Categorized Tag Pills Cloud -->
                                             <div class="flex flex-wrap gap-x-2 gap-y-1">
                                                 <template x-for="tag in getSortedTags(post.tags_json)" :key="tag.category + ':' + tag.name">
-                                                    <span class="font-mono text-[11px] leading-tight"
-                                                        :class="!['GENERAL', 'META'].includes(tag.category) ? 'font-bold' : 'font-normal'"
+                                                    <span class="font-mono text-[11px] leading-tight transition-all duration-150"
+                                                        :class="{
+                                                            'font-bold': !['GENERAL', 'META'].includes(tag.category),
+                                                            'font-normal': ['GENERAL', 'META'].includes(tag.category),
+
+                                                            // 1. Target post tags: Keep fully visible
+                                                            'opacity-100': 
+                                                                hoveredMergedData?.clusterId == cluster.cluster_id && 
+                                                                hoveredMergedData?.targetPostId == post.post_id, // Updated
+
+                                                            // 2. Other posts: Highlight incoming tags
+                                                            'opacity-100 brightness-125 font-bold': 
+                                                                hoveredMergedData?.clusterId == cluster.cluster_id && 
+                                                                hoveredMergedData?.targetPostId != post.post_id && // Updated
+                                                                hoveredMergedData?.tags.includes(tag.name),
+
+                                                            // 3. Other posts: Dim unrelated tags
+                                                            'opacity-30': 
+                                                                hoveredMergedData?.clusterId == cluster.cluster_id && 
+                                                                hoveredMergedData?.targetPostId != post.post_id && // Updated
+                                                                !hoveredMergedData?.tags.includes(tag.name),
+
+                                                            // 4. Default state
+                                                            'opacity-90': hoveredMergedData?.clusterId != cluster.cluster_id
+                                                        }"
                                                         :style="getTagStyle(tag.category)"
                                                         x-text="tag.name"></span>
                                                 </template>

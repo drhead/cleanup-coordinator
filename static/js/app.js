@@ -12,6 +12,7 @@ function app() {
         showInstructionsModal: false,
         blacklistText: localStorage.getItem('e621_blacklist') || 
             '# Violence\ngore\nsnuff\nrape\n\n# ABDL\nyoung -rating:s\ndiaper -rating:s\n\n# Fetish\nfeces\nurine\nfart_fetish\nrealistic_feral rating:e\n\n# Controversial\npolitics',
+        hoveredMergedData: { clusterId: null, targetPostId: null, tags: [] },
 
         showToast(message, type = 'error', duration = 4000) {
             const id = Date.now() + Math.random();
@@ -481,6 +482,24 @@ function app() {
             const mergedCount = this.getMergedTagCount(currentPost, clusterPosts);
 
             return mergedCount - currentCount;
+        },
+
+        setHoveredMergedTags(clusterId, targetPost, clusterPosts) {
+            const targetTags = new Set(
+                Object.values(targetPost.tags_json || {}).flat()
+            );
+
+            const mergedList = Array.from(this.calculateMergedTags(targetPost, clusterPosts) || []);
+
+            this.hoveredMergedData = {
+                clusterId: clusterId,
+                targetPostId: targetPost.post_id, // Or targetPost.post_id depending on your schema key
+                tags: mergedList.filter(tag => !targetTags.has(tag))
+            };
+        },
+
+        clearHoveredMergedTags() {
+            this.hoveredMergedData = { clusterId: null, targetPostId: null, tags: [] };
         }
     };
 }
