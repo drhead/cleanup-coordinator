@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+env/
+venv/
+ENV/
+
+# Environment / Local Configs
+.env
+.env.local
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS Junk
+.DS_Store
+Thumbs.db
+
+# Database
+data/
+
+# Data import scripts/files
+/import_*
+/export_*
+/update_*
+/e621_archive_manager.py
+/e621_db_reader.py
+/e621_metadata_manager.py
+
+# Secrets file
+/secrets.json
