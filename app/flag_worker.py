@@ -6,10 +6,10 @@ from pathlib import Path
 import sqlite3
 
 import httpx
-import msgspec
 
 from app.db import get_db
 from app.rate_limiter import e621_limiter
+from app.schemas import flag_decoder
 
 SECRETS_PATH = Path("secrets.json")
 BASE_URL = "https://e621.net/post_flags.json"
@@ -17,13 +17,6 @@ LIMIT = 320
 
 secrets_data = json.loads(SECRETS_PATH.read_text(encoding="utf-8"))
 USER_AGENT = f"postflags_worker/1.0 (by {secrets_data['e621_username']})"
-
-
-class FlagPayload(msgspec.Struct):
-    id: int
-    post_id: int
-    is_resolved: bool
-    is_deletion: bool
 
 
 def get_known_flag_ids(conn: sqlite3.Connection) -> set[int]:
@@ -54,7 +47,7 @@ async def poll_e621_flags_once(client: httpx.AsyncClient) -> None:
                 break
 
             response.raise_for_status()
-            batch = msgspec.json.decode(response.content, type=list[FlagPayload])
+            batch = flag_decoder.decode(response.content)
 
             if not batch:
                 break
