@@ -35,8 +35,6 @@ CREATE TABLE IF NOT EXISTS cluster_posts (
     pool_ids INTEGER[] NOT NULL DEFAULT '{}',
     rating TEXT,
     tags_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-    is_flagged BOOLEAN NOT NULL DEFAULT FALSE,
-    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
     image_width INTEGER CHECK (image_width IS NULL OR image_width >= 0),
     image_height INTEGER CHECK (image_height IS NULL OR image_height >= 0),
     image_format TEXT,
@@ -86,6 +84,37 @@ CREATE INDEX IF NOT EXISTS idx_post_tags_tag ON post_tags(tag_name);
 CREATE INDEX IF NOT EXISTS idx_cluster_posts_pools_gin ON cluster_posts USING GIN (pool_ids);
 CREATE INDEX IF NOT EXISTS idx_cluster_posts_tags_jsonb_gin ON cluster_posts USING GIN (tags_json);
 
+CREATE INDEX IF NOT EXISTS idx_clusters_batch_index ON clusters(batch_id, cluster_index);
+CREATE INDEX IF NOT EXISTS idx_post_flags_pk_only ON post_flags(flag_id);
+
+-- =========================================================================
+-- INCREMENTAL MATERIALIZED VIEWS & FLAG MAPPING
+-- =========================================================================
+
+-- Raw aggregate counts directly maintained on post_flags changes
+SELECT pgivm.create_immv(
+    'immv_post_flag_counts',
+    $$
+    SELECT 
+        pf.post_id,
+        COUNT(CASE WHEN pf.is_resolved = FALSE AND pf.is_deletion = TRUE THEN 1 END) AS active_deletion_count,
+        COUNT(CASE WHEN pf.is_resolved = FALSE AND pf.is_deletion = FALSE THEN 1 END) AS active_flag_count
+    FROM post_flags pf
+    GROUP BY pf.post_id
+    $$
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_immv_post_flag_counts_post_id 
+  ON immv_post_flag_counts(post_id);
+
+-- Standard view presenting clean boolean state per post
+CREATE OR REPLACE VIEW cluster_post_flags AS
+SELECT 
+    fc.post_id,
+    COALESCE(fc.active_deletion_count > 0, FALSE) AS is_deleted,
+    COALESCE(fc.active_flag_count > 0, FALSE) AS is_flagged
+FROM immv_post_flag_counts fc;
+
 -- =========================================================================
 -- COMPUTED METRICS VIEW
 -- Evaluates discrepancy flags and resolution criteria per cluster
@@ -101,7 +130,9 @@ WITH active_posts AS (
         cp.tags_json,
         cp.pool_ids
     FROM cluster_posts cp
-    WHERE cp.is_flagged = FALSE AND cp.is_deleted = FALSE
+    LEFT JOIN cluster_post_flags cpf ON cp.post_id = cpf.post_id
+    WHERE COALESCE(cpf.is_flagged, FALSE) = FALSE 
+      AND COALESCE(cpf.is_deleted, FALSE) = FALSE
 ),
 cluster_metrics AS (
     SELECT 
@@ -202,63 +233,7 @@ LEFT JOIN cluster_metrics m ON c.cluster_id = m.cluster_id;
 -- TRIGGER FUNCTIONS & TRIGGERS
 -- =========================================================================
 
--- 1. Synchronize flags onto cluster_posts
-CREATE OR REPLACE FUNCTION fn_sync_post_flags()
-RETURNS TRIGGER AS $$
-BEGIN
-    UPDATE cluster_posts
-    SET 
-        is_flagged = EXISTS (
-            SELECT 1 FROM post_flags pf 
-            WHERE pf.post_id = NEW.post_id AND pf.is_resolved = FALSE AND pf.is_deletion = FALSE
-        ),
-        is_deleted = EXISTS (
-            SELECT 1 FROM post_flags pf 
-            WHERE pf.post_id = NEW.post_id AND pf.is_resolved = FALSE AND pf.is_deletion = TRUE
-        )
-    WHERE post_id = NEW.post_id;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_sync_post_flags_insert ON post_flags;
-CREATE TRIGGER trg_sync_post_flags_insert
-AFTER INSERT ON post_flags
-FOR EACH ROW
-EXECUTE FUNCTION fn_sync_post_flags();
-
-DROP TRIGGER IF EXISTS trg_sync_post_flags_update ON post_flags;
-CREATE TRIGGER trg_sync_post_flags_update
-AFTER UPDATE ON post_flags
-FOR EACH ROW
-EXECUTE FUNCTION fn_sync_post_flags();
-
--- Sync flags when a new cluster_post row is inserted
-CREATE OR REPLACE FUNCTION fn_sync_flags_on_cluster_post_insert()
-RETURNS TRIGGER AS $$
-BEGIN
-    UPDATE cluster_posts
-    SET 
-        is_flagged = EXISTS (
-            SELECT 1 FROM post_flags pf 
-            WHERE pf.post_id = NEW.post_id AND pf.is_resolved = FALSE AND pf.is_deletion = FALSE
-        ),
-        is_deleted = EXISTS (
-            SELECT 1 FROM post_flags pf 
-            WHERE pf.post_id = NEW.post_id AND pf.is_resolved = FALSE AND pf.is_deletion = TRUE
-        )
-    WHERE cluster_id = NEW.cluster_id AND post_id = NEW.post_id;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_sync_post_flags_on_cluster_post_insert ON cluster_posts;
-CREATE TRIGGER trg_sync_post_flags_on_cluster_post_insert
-AFTER INSERT ON cluster_posts
-FOR EACH ROW
-EXECUTE FUNCTION fn_sync_flags_on_cluster_post_insert();
-
--- 2. Recalculate cluster evaluation on cluster_posts metadata changes
+-- 1. Recalculate cluster evaluation on cluster_posts metadata changes
 CREATE OR REPLACE FUNCTION fn_reevaluate_cluster_from_post()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -274,7 +249,7 @@ $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trg_reevaluate_cluster_on_post_change ON cluster_posts;
 CREATE TRIGGER trg_reevaluate_cluster_on_post_change
-AFTER UPDATE OF parent_id, pool_ids, rating, tags_json, is_flagged, is_deleted ON cluster_posts
+AFTER UPDATE OF parent_id, pool_ids, rating, tags_json ON cluster_posts
 FOR EACH ROW
 EXECUTE FUNCTION fn_reevaluate_cluster_from_post();
 
@@ -284,7 +259,7 @@ AFTER INSERT ON cluster_posts
 FOR EACH ROW
 EXECUTE FUNCTION fn_reevaluate_cluster_from_post();
 
--- 3. Recalculate cluster evaluation on manual resolution or custom note toggles
+-- 2. Recalculate cluster evaluation on manual resolution or custom note toggles
 CREATE OR REPLACE FUNCTION fn_reevaluate_cluster_from_cluster()
 RETURNS TRIGGER AS $$
 BEGIN

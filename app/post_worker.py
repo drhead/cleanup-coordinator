@@ -71,14 +71,19 @@ async def refresh_posts_metadata(
                     conn: asyncpg.Connection
                     rows = await conn.fetch(
                         """
-                        SELECT cp.post_id, pf.is_resolved, pf.is_deletion 
-                        FROM cluster_posts cp
-                        LEFT JOIN post_flags pf ON cp.post_id = pf.post_id
-                        WHERE cp.post_id = ANY($1::int[]);
+                        SELECT post_id, is_flagged, is_deleted
+                        FROM cluster_post_flags
+                        WHERE post_id = ANY($1::bigint[]);
                         """,
                         chunk_post_ids,
                     )
-                    local_states = {r["post_id"]: (bool(r["is_resolved"]), bool(r["is_deletion"])) for r in rows}
+                    local_states = {
+                        r["post_id"]: (
+                            bool(r["is_flagged"]),
+                            bool(r["is_deleted"]),
+                        )
+                        for r in rows
+                    }
 
             records_to_update: list[tuple[int | None, list[int], str, str, int]] = []
 
@@ -126,7 +131,13 @@ async def refresh_posts_metadata(
                                 pool_ids = $2::int[],
                                 rating = $3,
                                 tags_json = $4::jsonb
-                            WHERE post_id = $5;
+                            WHERE post_id = $5
+                                AND (
+                                    parent_id IS DISTINCT FROM $1 OR
+                                    pool_ids IS DISTINCT FROM $2::int[] OR
+                                    rating IS DISTINCT FROM $3 OR
+                                    tags_json IS DISTINCT FROM $4::jsonb
+                                );
                             """,
                             records_to_update,
                         )

@@ -10,7 +10,7 @@ from app.secrets import secrets
 from app.rate_limiter import e621_limiter
 from app.structs import E621PostFlagItem
 
-USER_AGENT = f"cleanup-coordinator_flag-worker/1.1 (by {secrets.e621_username})"
+USER_AGENT = f"cleanup-coordinator_flag-worker/1.2 (by {secrets.e621_username})"
 
 BASE_URL = "https://e621.net/post_flags.json"
 CHUNK_LIMIT = 320
@@ -18,10 +18,10 @@ CHUNK_LIMIT = 320
 flag_decoder = msgspec.json.Decoder(type=list[E621PostFlagItem])
 
 
-async def get_known_flag_ids(conn: asyncpg.Connection) -> set[int]:
-    """Fetches all flag IDs currently stored in the PostgreSQL DB."""
-    rows = await conn.fetch("SELECT flag_id FROM post_flags;")
-    return {r["flag_id"] for r in rows}
+async def get_known_flag_ids(conn: asyncpg.Connection) -> int:
+    """Fetches the maximum flag ID currently stored in the PostgreSQL DB."""
+    max_id = await conn.fetchval("SELECT COALESCE(MAX(flag_id), 0) FROM post_flags;")
+    return max_id or 0
 
 
 async def refresh_post_flags(
@@ -35,29 +35,39 @@ async def refresh_post_flags(
         return
 
     flag_items = flag_decoder.decode(response.content)
+    if not flag_items:
+        return
+
+    flag_ids = [item.id for item in flag_items]
+    post_ids = [item.post_id for item in flag_items]
+    is_resolved = [item.is_resolved for item in flag_items]
+    is_deletion = [item.is_deletion for item in flag_items]
+
     pool = get_db()
     async with pool.acquire() as conn:
         conn: asyncpg.Connection
-        async with conn.transaction():
-            for item in flag_items:
-                await conn.execute(
-                    """
-                    INSERT INTO post_flags (flag_id, post_id, is_resolved, is_deletion)
-                    VALUES ($1, $2, $3, $4)
-                    ON CONFLICT(flag_id) DO UPDATE SET
-                        is_resolved = EXCLUDED.is_resolved,
-                        is_deletion = EXCLUDED.is_deletion;
-                    """,
-                    item.id, item.post_id, item.is_resolved, item.is_deletion,
-                )
+        await conn.execute(
+            """
+            INSERT INTO post_flags (flag_id, post_id, is_resolved, is_deletion)
+            SELECT * FROM UNNEST($1::int[], $2::int[], $3::bool[], $4::bool[])
+            ON CONFLICT (flag_id) DO UPDATE SET
+                post_id = EXCLUDED.post_id,
+                is_resolved = EXCLUDED.is_resolved,
+                is_deletion = EXCLUDED.is_deletion;
+            """,
+            flag_ids,
+            post_ids,
+            is_resolved,
+            is_deletion,
+        )
 
 
 async def fetch_all_new_flags(client: httpx.AsyncClient) -> None:
-    """Executes a poll cycle fetching flags until overlapping with known DB state."""
+    """Executes a poll cycle fetching flags until reaching known DB state."""
     pool = get_db()
     async with pool.acquire() as conn:
         conn: asyncpg.Connection
-        known_ids = await get_known_flag_ids(conn)
+        max_known_id = await get_known_flag_ids(conn)
 
     current_before_id: int | None = None
 
@@ -81,44 +91,46 @@ async def fetch_all_new_flags(client: httpx.AsyncClient) -> None:
             if not batch:
                 break
 
-            records_to_upsert: list[tuple[int, int, bool, bool]] = []
-            batch_overlap = 0
+            flag_ids: list[int] = []
+            post_ids: list[int] = []
+            is_resolved: list[bool] = []
+            is_deletion: list[bool] = []
+
+            hit_known_threshold = False
 
             for flag in batch:
-                if flag.id in known_ids:
-                    batch_overlap += 1
-                else:
-                    known_ids.add(flag.id)
+                if flag.id <= max_known_id:
+                    hit_known_threshold = True
+                    # If flag state can change (e.g., is_resolved), still include it,
+                    # but stop pagination after this batch.
 
-                records_to_upsert.append(
-                    (
-                        flag.id,
-                        flag.post_id,
-                        flag.is_resolved,
-                        flag.is_deletion,
-                    )
-                )
+                flag_ids.append(flag.id)
+                post_ids.append(flag.post_id)
+                is_resolved.append(flag.is_resolved)
+                is_deletion.append(flag.is_deletion)
 
-            if records_to_upsert:
+            if flag_ids:
                 async with pool.acquire() as conn:
                     conn: asyncpg.Connection
-                    async with conn.transaction():
-                        await conn.executemany(
-                            """
-                            INSERT INTO post_flags (flag_id, post_id, is_resolved, is_deletion)
-                            VALUES ($1, $2, $3, $4)
-                            ON CONFLICT(flag_id) DO UPDATE SET
-                                post_id = EXCLUDED.post_id,
-                                is_resolved = EXCLUDED.is_resolved,
-                                is_deletion = EXCLUDED.is_deletion;
-                            """,
-                            records_to_upsert,
-                        )
+                    await conn.execute(
+                        """
+                        INSERT INTO post_flags (flag_id, post_id, is_resolved, is_deletion)
+                        SELECT * FROM UNNEST($1::int[], $2::int[], $3::bool[], $4::bool[])
+                        ON CONFLICT (flag_id) DO UPDATE SET
+                            post_id = EXCLUDED.post_id,
+                            is_resolved = EXCLUDED.is_resolved,
+                            is_deletion = EXCLUDED.is_deletion;
+                        """,
+                        flag_ids,
+                        post_ids,
+                        is_resolved,
+                        is_deletion,
+                    )
+
+            if hit_known_threshold:
+                break
 
             current_before_id = batch[-1].id
-
-            if batch_overlap == len(batch):
-                break
 
         except Exception as e:
             print(f"[FlagWorker] Error during poll cycle: {e}")

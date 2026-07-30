@@ -92,8 +92,8 @@ def parse_cluster_post(row: asyncpg.Record) -> ClusterPost:
         rating=row["rating"] or "s",
         pool_ids=row["pool_ids"] or [],
         tags_categorized=row["tags_json"] if isinstance(row["tags_json"], dict) else msgspec.json.decode(row["tags_json"] or "{}", type=dict[str, list[str]]),
-        is_flagged=bool(row["calculated_flagged"]),
-        is_deleted=bool(row["calculated_deleted"]),
+        is_flagged=bool(row["is_flagged"]),
+        is_deleted=bool(row["is_deleted"]),
     )
 
 
@@ -145,33 +145,15 @@ async def get_project_batches(
         # 2. Single query for ALL clusters and ALL posts across the entire project
         flat_rows = await conn.fetch(
             """
-            SELECT 
-                c.batch_id,
-                c.cluster_id,
-                c.cluster_index,
-                c.note,
-                c.is_resolved,
-                c.manual_resolution,
-                cp.post_id,
-                cp.parent_id,
-                cp.pool_ids,
-                cp.rating,
-                cp.tags_json,
-                EXISTS (
-                    SELECT 1 FROM post_flags pf 
-                    WHERE pf.post_id = cp.post_id 
-                      AND pf.is_resolved = FALSE 
-                      AND pf.is_deletion = TRUE
-                ) AS calculated_deleted,
-                EXISTS (
-                    SELECT 1 FROM post_flags pf 
-                    WHERE pf.post_id = cp.post_id 
-                      AND pf.is_resolved = FALSE 
-                      AND pf.is_deletion = FALSE
-                ) AS calculated_flagged
+            SELECT c.batch_id, c.cluster_id, c.cluster_index, c.note, c.is_resolved, 
+                c.manual_resolution, cp.post_id, cp.parent_id, cp.pool_ids, 
+                cp.rating, cp.tags_json, 
+                COALESCE(fc.active_deletion_count > 0, FALSE) AS is_deleted, 
+                COALESCE(fc.active_flag_count > 0, FALSE) AS is_flagged
             FROM clusters c
             JOIN batches b ON c.batch_id = b.batch_id
             LEFT JOIN cluster_posts cp ON c.cluster_id = cp.cluster_id
+            LEFT JOIN immv_post_flag_counts fc ON cp.post_id = fc.post_id
             WHERE b.project_id = $1
             ORDER BY c.batch_id ASC, c.cluster_index ASC
             """,
