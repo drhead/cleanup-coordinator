@@ -2,7 +2,8 @@
 
 from fnmatch import fnmatch
 import re
-from typing import Any
+
+from app.structs import ClusterPost
 
 RATING_MAP: dict[str, str] = {
     "s": "s",
@@ -13,7 +14,7 @@ RATING_MAP: dict[str, str] = {
     "explicit": "e",
 }
 
-RATING_ORDER: dict[str, int] = {"e": 3, "q": 2, "s": 1}
+RATING_ORDER = {"s": 1, "q": 2, "e": 3}
 
 class TermMatcher:
     """Matches a single tag term, wildcard pattern, or rating specifier."""
@@ -153,7 +154,7 @@ class E621BlacklistEvaluator:
 
 
 def get_cluster_union_tags_and_rating(
-    cluster_posts: list[dict[str, Any]],
+    cluster_posts: list[ClusterPost],
 ) -> tuple[set[str], str]:
     """Extracts union set of tags and canonical highest rating (e > q > s)."""
     union_tags: set[str] = set()
@@ -161,15 +162,13 @@ def get_cluster_union_tags_and_rating(
     canonical_rating = "s"
 
     for post in cluster_posts:
-        p_rating = (post.get("rating") or "s").lower()
+        p_rating = (post.rating or "s").lower()
         score = RATING_ORDER.get(p_rating, 1)
         if score > max_rating_score:
             max_rating_score = score
             canonical_rating = p_rating
 
-        tags_dict: dict[str, list[str]] = post.get("tags_json") or {}
-
-        for cat_tags in tags_dict.values():
+        for cat_tags in post.tags_categorized.values():
             for tag in cat_tags:
                 union_tags.add(tag.lower())
 

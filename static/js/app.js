@@ -432,14 +432,14 @@ function app() {
             const mergedTags = new Set();
 
             // 1. Artist tags: ONLY kept from target post
-            const targetArtistTags = targetPost.tags_json?.ARTIST || targetPost.tags_json?.artist || [];
+            const targetArtistTags = targetPost.tags_categorized?.ARTIST || targetPost.tags_categorized?.artist || [];
             targetArtistTags.forEach(tag => mergedTags.add(tag));
 
             // 2. All other categories: Gathered from all posts in cluster
             for (const post of clusterPosts) {
-                if (!post.tags_json) continue;
+                if (!post.tags_categorized) continue;
 
-                for (const [category, tags] of Object.entries(post.tags_json)) {
+                for (const [category, tags] of Object.entries(post.tags_categorized)) {
                     if (category.toUpperCase() === 'ARTIST') continue;
                     if (!Array.isArray(tags)) continue;
 
@@ -478,7 +478,7 @@ function app() {
         getMergedTagDelta(currentPost, clusterPosts) {
             if (!currentPost) return 0;
 
-            const currentCount = Object.values(currentPost.tags_json || {}).flat().length;
+            const currentCount = Object.values(currentPost.tags_categorized || {}).flat().length;
             const mergedCount = this.getMergedTagCount(currentPost, clusterPosts);
 
             return mergedCount - currentCount;
@@ -486,7 +486,7 @@ function app() {
 
         setHoveredMergedTags(clusterId, targetPost, clusterPosts) {
             const targetTags = new Set(
-                Object.values(targetPost.tags_json || {}).flat()
+                Object.values(targetPost.tags_categorized || {}).flat()
             );
 
             const mergedList = Array.from(this.calculateMergedTags(targetPost, clusterPosts) || []);

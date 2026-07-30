@@ -398,7 +398,7 @@
                                                 <div class="flex items-center space-x-1.5">
                                                     <span class="text-gray-500 font-semibold text-[10px] uppercase tracking-wider block">Post Tags</span>
                                                     <span class="text-gray-600 font-mono text-[10px] font-medium"
-                                                        x-text="`(${Object.values(post.tags_json || {}).flat().length})`"></span>
+                                                        x-text="`(${Object.values(post.tags_categorized || {}).flat().length})`"></span>
                                                 </div>
                                                 
                                                 <!-- Copy Merged Tags Action Button -->
@@ -422,13 +422,13 @@
                                             </div>
 
                                             <!-- Empty Tags Fallback -->
-                                            <template x-if="getSortedTags(post.tags_json).length === 0">
+                                            <template x-if="getSortedTags(post.tags_categorized).length === 0">
                                                 <span class="text-gray-500 italic text-[11px] block">No tags available</span>
                                             </template>
                                             
                                             <!-- Categorized Tag Pills Cloud -->
                                             <div class="flex flex-wrap gap-x-2 gap-y-1">
-                                                <template x-for="tag in getSortedTags(post.tags_json)" :key="tag.category + ':' + tag.name">
+                                                <template x-for="tag in getSortedTags(post.tags_categorized)" :key="tag.category + ':' + tag.name">
                                                     <span class="font-mono text-[11px] leading-tight transition-all duration-150"
                                                         :class="{
                                                             'font-bold': !['GENERAL', 'META'].includes(tag.category),

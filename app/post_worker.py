@@ -1,17 +1,15 @@
-import json
-from pathlib import Path
 from typing import Any
 
 import httpx
 import msgspec
 
-from app.rate_limiter import e621_limiter
 from app.db import get_db
+from app.secrets import secrets
+from app.rate_limiter import e621_limiter
 from app.structs import PostData
 from app.flag_worker import refresh_post_flags
 
-secrets_data = json.loads(Path("secrets.json").read_text(encoding="utf-8"))
-USER_AGENT = f"cleanup-coordinator_posts-worker/1.2 (by {secrets_data['e621_username']})"
+USER_AGENT = f"cleanup-coordinator_posts-worker/1.2 (by {secrets.e621_username})"
 
 POSTS_URL = "https://e621.net/posts.json"
 CHUNK_LIMIT = 320

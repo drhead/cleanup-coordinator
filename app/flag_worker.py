@@ -1,19 +1,17 @@
 """Background worker for polling e621 post flag and deletion statuses."""
 
 import asyncio
-import json
-from pathlib import Path
 import sqlite3
 
 import msgspec
 import httpx
 
 from app.db import get_db
+from app.secrets import secrets
 from app.rate_limiter import e621_limiter
 from app.structs import E621PostFlagItem
 
-secrets_data = json.loads(Path("secrets.json").read_text(encoding="utf-8"))
-USER_AGENT = f"cleanup-coordinator_flag-worker/1.1 (by {secrets_data['e621_username']})"
+USER_AGENT = f"cleanup-coordinator_flag-worker/1.1 (by {secrets.e621_username})"
 
 BASE_URL = "https://e621.net/post_flags.json"
 CHUNK_LIMIT = 320
