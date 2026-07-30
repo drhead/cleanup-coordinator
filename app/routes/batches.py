@@ -6,7 +6,6 @@ from time import time
 from typing import Any
 
 from fastapi import BackgroundTasks, HTTPException, Request, APIRouter
-import asyncpg
 
 from app.db import get_db
 from app.leases import clear_expired_leases, get_client_ip
@@ -23,7 +22,6 @@ async def claim_batch(batch_id: int, request: Request) -> dict[str, Any]:
 
     pool = get_db()
     async with pool.acquire() as conn:
-        conn: asyncpg.Connection
         async with conn.transaction():
             batch = await conn.fetchrow(
                 "SELECT * FROM batches WHERE batch_id = $1;", batch_id
@@ -98,7 +96,6 @@ async def revoke_batch_lease(
 
     pool = get_db()
     async with pool.acquire() as conn:
-        conn: asyncpg.Connection
         async with conn.transaction():
             batch = await conn.fetchrow(
                 "SELECT * FROM batches WHERE batch_id = $1;", batch_id
@@ -168,7 +165,6 @@ async def refresh_batch(batch_id: int, request: Request) -> dict[str, Any]:
 
     pool = get_db()
     async with pool.acquire() as conn:
-        conn: asyncpg.Connection
         rows = await conn.fetch(
             """
             SELECT cp.post_id 

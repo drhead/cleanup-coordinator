@@ -40,7 +40,6 @@ router = APIRouter()
 async def get_projects() -> dict[str, list[dict[str, Any]]]:
     pool = get_db()
     async with pool.acquire() as conn:
-        conn: asyncpg.Connection
         rows = await conn.fetch(
             """
             SELECT 
@@ -117,8 +116,6 @@ async def get_project_batches(
 
     pool = get_db()
     async with pool.acquire() as conn:
-        conn: asyncpg.Connection
-        
         # 1. Single query for all batches in project
         batches_rows = await conn.fetch(
             """

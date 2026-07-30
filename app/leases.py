@@ -4,7 +4,6 @@ import asyncio
 from datetime import datetime, timezone
 
 from fastapi import Request
-import asyncpg
 
 from app.db import get_db
 from app.post_worker import refresh_batch_posts
@@ -27,7 +26,6 @@ async def clear_expired_leases() -> None:
 
     pool = get_db()
     async with pool.acquire() as conn:
-        conn: asyncpg.Connection
         async with conn.transaction():
             expired = await conn.fetch(
                 "DELETE FROM leases WHERE expires_at <= $1 RETURNING batch_id;",

@@ -6,7 +6,6 @@ import asyncio
 
 import httpx
 import msgspec
-import asyncpg
 
 from app.db import get_db
 from app.secrets import secrets
@@ -68,7 +67,6 @@ async def refresh_posts_metadata(
 
             if chunk_post_ids:
                 async with pool.acquire() as conn:
-                    conn: asyncpg.Connection
                     rows = await conn.fetch(
                         """
                         SELECT post_id, is_flagged, is_deleted
@@ -122,7 +120,6 @@ async def refresh_posts_metadata(
 
             if records_to_update:
                 async with pool.acquire() as conn:
-                    conn: asyncpg.Connection
                     async with conn.transaction():
                         await conn.executemany(
                             """
@@ -156,7 +153,6 @@ async def refresh_batch_posts(batch_id: int) -> None:
     try:
         pool = get_db()
         async with pool.acquire() as conn:
-            conn: asyncpg.Connection
             rows = await conn.fetch(
                 """
                 SELECT DISTINCT cp.post_id FROM cluster_posts cp
@@ -177,7 +173,6 @@ async def get_all_project_ids() -> list[str]:
     """Retrieves all distinct project IDs from the database."""
     pool = get_db()
     async with pool.acquire() as conn:
-        conn: asyncpg.Connection
         rows = await conn.fetch("SELECT DISTINCT project_id FROM batches;")
         return [r["project_id"] for r in rows if r["project_id"]]
 
@@ -193,7 +188,6 @@ async def get_project_post_ids(project_id: str) -> list[int]:
     """
     pool = get_db()
     async with pool.acquire() as conn:
-        conn: asyncpg.Connection
         rows = await conn.fetch(query, project_id)
         return [r["post_id"] for r in rows]
 

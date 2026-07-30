@@ -3,7 +3,6 @@
 from typing import Any
 
 from fastapi import APIRouter, Request
-import asyncpg
 
 from app.db import get_db
 from app.leases import clear_expired_leases, get_client_ip
@@ -18,7 +17,6 @@ async def get_leases(request: Request) -> dict[str, list[dict[str, Any]]]:
 
     pool = get_db()
     async with pool.acquire() as conn:
-        conn: asyncpg.Connection
         rows = await conn.fetch(
             """
             SELECT 
@@ -34,7 +32,7 @@ async def get_leases(request: Request) -> dict[str, list[dict[str, Any]]]:
             client_ip,
         )
 
-        leases_list = []
+        leases_list: list[dict[str, Any]] = []
         for r in rows:
             d = dict(r)
             if d.get("leased_until"):

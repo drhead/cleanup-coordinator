@@ -3,3 +3,5 @@ uvicorn[standard]>=0.20.0
 pydantic>=2.0.0
 msgspec>=0.18.0
 httpx>=0.24.0
+asyncpg>=0.31.0
+asyncpg-stubs>=0.31.0

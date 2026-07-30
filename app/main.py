@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.flag_worker import flag_poller_loop
 from app.post_worker import project_worker_manager
+from app.tags_worker import run_tags_worker
 from app.leases import lease_poller_loop
 from app.routes import batches, leases, projects, views
 from app.db import init_db_pool, close_db_pool
@@ -18,12 +19,14 @@ async def lifespan(app: FastAPI):
     await init_db_pool()
     poller_task = asyncio.create_task(flag_poller_loop())
     lease_task = asyncio.create_task(lease_poller_loop())
+    tags_task = asyncio.create_task(run_tags_worker())
     await project_worker_manager.sync_projects()
 
     yield
 
     poller_task.cancel()
     lease_task.cancel()
+    tags_task.cancel()
     try:
         await asyncio.gather(
             poller_task,

@@ -18,7 +18,7 @@ CHUNK_LIMIT = 320
 flag_decoder = msgspec.json.Decoder(type=list[E621PostFlagItem])
 
 
-async def get_known_flag_ids(conn: asyncpg.Connection) -> int:
+async def get_known_flag_ids(conn: asyncpg.pool.PoolConnectionProxy) -> int:
     """Fetches the maximum flag ID currently stored in the PostgreSQL DB."""
     max_id = await conn.fetchval("SELECT COALESCE(MAX(flag_id), 0) FROM post_flags;")
     return max_id or 0
@@ -45,7 +45,6 @@ async def refresh_post_flags(
 
     pool = get_db()
     async with pool.acquire() as conn:
-        conn: asyncpg.Connection
         await conn.execute(
             """
             INSERT INTO post_flags (flag_id, post_id, is_resolved, is_deletion)
@@ -66,7 +65,6 @@ async def fetch_all_new_flags(client: httpx.AsyncClient) -> None:
     """Executes a poll cycle fetching flags until reaching known DB state."""
     pool = get_db()
     async with pool.acquire() as conn:
-        conn: asyncpg.Connection
         max_known_id = await get_known_flag_ids(conn)
 
     current_before_id: int | None = None
@@ -111,7 +109,6 @@ async def fetch_all_new_flags(client: httpx.AsyncClient) -> None:
 
             if flag_ids:
                 async with pool.acquire() as conn:
-                    conn: asyncpg.Connection
                     await conn.execute(
                         """
                         INSERT INTO post_flags (flag_id, post_id, is_resolved, is_deletion)
