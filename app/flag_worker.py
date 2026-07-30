@@ -4,25 +4,52 @@ import asyncio
 import json
 from pathlib import Path
 import sqlite3
+import msgspec
 
 import httpx
 
 from app.db import get_db
 from app.rate_limiter import e621_limiter
-from app.schemas import flag_decoder
+from app.schemas import E621PostFlagItem
 
 SECRETS_PATH = Path("secrets.json")
 BASE_URL = "https://e621.net/post_flags.json"
 LIMIT = 320
 
 secrets_data = json.loads(SECRETS_PATH.read_text(encoding="utf-8"))
-USER_AGENT = f"postflags_worker/1.0 (by {secrets_data['e621_username']})"
+USER_AGENT = f"cleanup-coordinator_flag-worker/1.1 (by {secrets_data['e621_username']})"
 
+flag_decoder = msgspec.json.Decoder(type=list[E621PostFlagItem])
 
 def get_known_flag_ids(conn: sqlite3.Connection) -> set[int]:
     """Fetches all flag IDs currently stored in the local SQLite DB."""
     rows = conn.execute("SELECT flag_id FROM post_flags;").fetchall()
     return {r[0] for r in rows}
+
+
+async def fetch_and_sync_post_flags(
+    post_id: int, client: httpx.AsyncClient
+) -> None:
+    """Queries e621 for a post's flags and upserts them into the database."""
+    await e621_limiter.wait_async()
+
+    response = await client.get(BASE_URL, params={"search[post_id]": post_id})
+    if response.status_code != 200:
+        return
+
+    flag_items = flag_decoder.decode(response.content)
+    with get_db() as conn:
+        for item in flag_items:
+            conn.execute(
+                """
+                INSERT INTO post_flags (flag_id, post_id, is_resolved, is_deletion)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(flag_id) DO UPDATE SET
+                    is_resolved = excluded.is_resolved,
+                    is_deletion = excluded.is_deletion;
+                """,
+                (item.id, item.post_id, item.is_resolved, item.is_deletion),
+            )
 
 
 async def poll_e621_flags_once(client: httpx.AsyncClient) -> None:
