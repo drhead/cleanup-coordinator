@@ -7,23 +7,34 @@ from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app.flag_worker import flag_poller_loop
+from app.post_worker import project_worker_manager
 from app.leases import lease_poller_loop
 from app.routes import batches, leases, projects, views
+from app.db import init_db_pool, close_db_pool
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await init_db_pool()
     poller_task = asyncio.create_task(flag_poller_loop())
     lease_task = asyncio.create_task(lease_poller_loop())
+    await project_worker_manager.sync_projects()
 
     yield
 
     poller_task.cancel()
     lease_task.cancel()
     try:
-        await asyncio.gather(poller_task, lease_task, return_exceptions=True)
+        await asyncio.gather(
+            poller_task,
+            lease_task,
+            project_worker_manager.stop_all(),
+            return_exceptions=True
+        )
     except asyncio.CancelledError:
         pass
+
+    await close_db_pool()
 
 
 app = FastAPI(lifespan=lifespan)

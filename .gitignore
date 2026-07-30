@@ -35,3 +35,6 @@ data/
 
 # Secrets file
 /secrets.json
+
+# Profiles
+/profile*

@@ -1,10 +1,9 @@
 """Background worker for polling e621 post flag and deletion statuses."""
 
 import asyncio
-import sqlite3
-
 import msgspec
 import httpx
+import asyncpg
 
 from app.db import get_db
 from app.secrets import secrets
@@ -18,10 +17,11 @@ CHUNK_LIMIT = 320
 
 flag_decoder = msgspec.json.Decoder(type=list[E621PostFlagItem])
 
-def get_known_flag_ids(conn: sqlite3.Connection) -> set[int]:
-    """Fetches all flag IDs currently stored in the local SQLite DB."""
-    rows = conn.execute("SELECT flag_id FROM post_flags;").fetchall()
-    return {r[0] for r in rows}
+
+async def get_known_flag_ids(conn: asyncpg.Connection) -> set[int]:
+    """Fetches all flag IDs currently stored in the PostgreSQL DB."""
+    rows = await conn.fetch("SELECT flag_id FROM post_flags;")
+    return {r["flag_id"] for r in rows}
 
 
 async def refresh_post_flags(
@@ -35,24 +35,29 @@ async def refresh_post_flags(
         return
 
     flag_items = flag_decoder.decode(response.content)
-    with get_db() as conn:
-        for item in flag_items:
-            conn.execute(
-                """
-                INSERT INTO post_flags (flag_id, post_id, is_resolved, is_deletion)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(flag_id) DO UPDATE SET
-                    is_resolved = excluded.is_resolved,
-                    is_deletion = excluded.is_deletion;
-                """,
-                (item.id, item.post_id, item.is_resolved, item.is_deletion),
-            )
+    pool = get_db()
+    async with pool.acquire() as conn:
+        conn: asyncpg.Connection
+        async with conn.transaction():
+            for item in flag_items:
+                await conn.execute(
+                    """
+                    INSERT INTO post_flags (flag_id, post_id, is_resolved, is_deletion)
+                    VALUES ($1, $2, $3, $4)
+                    ON CONFLICT(flag_id) DO UPDATE SET
+                        is_resolved = EXCLUDED.is_resolved,
+                        is_deletion = EXCLUDED.is_deletion;
+                    """,
+                    item.id, item.post_id, item.is_resolved, item.is_deletion,
+                )
 
 
 async def fetch_all_new_flags(client: httpx.AsyncClient) -> None:
     """Executes a poll cycle fetching flags until overlapping with known DB state."""
-    with get_db() as conn:
-        known_ids = get_known_flag_ids(conn)
+    pool = get_db()
+    async with pool.acquire() as conn:
+        conn: asyncpg.Connection
+        known_ids = await get_known_flag_ids(conn)
 
     current_before_id: int | None = None
 
@@ -76,7 +81,7 @@ async def fetch_all_new_flags(client: httpx.AsyncClient) -> None:
             if not batch:
                 break
 
-            records_to_upsert: list[tuple[int, int, int, int]] = []
+            records_to_upsert: list[tuple[int, int, bool, bool]] = []
             batch_overlap = 0
 
             for flag in batch:
@@ -89,26 +94,26 @@ async def fetch_all_new_flags(client: httpx.AsyncClient) -> None:
                     (
                         flag.id,
                         flag.post_id,
-                        int(flag.is_resolved),
-                        int(flag.is_deletion),
+                        flag.is_resolved,
+                        flag.is_deletion,
                     )
                 )
 
             if records_to_upsert:
-                with get_db() as conn:
-                    conn.execute("BEGIN TRANSACTION;")
-                    conn.executemany(
-                        """
-                        INSERT INTO post_flags (flag_id, post_id, is_resolved, is_deletion)
-                        VALUES (?, ?, ?, ?)
-                        ON CONFLICT(flag_id) DO UPDATE SET
-                            post_id = excluded.post_id,
-                            is_resolved = excluded.is_resolved,
-                            is_deletion = excluded.is_deletion;
-                        """,
-                        records_to_upsert,
-                    )
-                    conn.commit()
+                async with pool.acquire() as conn:
+                    conn: asyncpg.Connection
+                    async with conn.transaction():
+                        await conn.executemany(
+                            """
+                            INSERT INTO post_flags (flag_id, post_id, is_resolved, is_deletion)
+                            VALUES ($1, $2, $3, $4)
+                            ON CONFLICT(flag_id) DO UPDATE SET
+                                post_id = EXCLUDED.post_id,
+                                is_resolved = EXCLUDED.is_resolved,
+                                is_deletion = EXCLUDED.is_deletion;
+                            """,
+                            records_to_upsert,
+                        )
 
             current_before_id = batch[-1].id
 
