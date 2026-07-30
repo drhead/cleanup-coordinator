@@ -12,12 +12,11 @@ from app.db import get_db
 from app.rate_limiter import e621_limiter
 from app.schemas import E621PostFlagItem
 
-SECRETS_PATH = Path("secrets.json")
-BASE_URL = "https://e621.net/post_flags.json"
-LIMIT = 320
-
-secrets_data = json.loads(SECRETS_PATH.read_text(encoding="utf-8"))
+secrets_data = json.loads(Path("secrets.json").read_text(encoding="utf-8"))
 USER_AGENT = f"cleanup-coordinator_flag-worker/1.1 (by {secrets_data['e621_username']})"
+
+BASE_URL = "https://e621.net/post_flags.json"
+CHUNK_LIMIT = 320
 
 flag_decoder = msgspec.json.Decoder(type=list[E621PostFlagItem])
 
@@ -62,7 +61,7 @@ async def poll_e621_flags_once(client: httpx.AsyncClient) -> None:
     while True:
         await e621_limiter.wait_async()
 
-        params: dict[str, int | str] = {"limit": LIMIT}
+        params: dict[str, int | str] = {"limit": CHUNK_LIMIT}
         if current_before_id:
             params["page"] = f"b{current_before_id}"
 

@@ -9,18 +9,13 @@ from app.db import get_db
 from app.schemas import PostData
 from app.flag_worker import fetch_and_sync_post_flags
 
-POST_FLAGS_URL = "https://e621.net/post_flags.json"
-
-SECRETS_PATH = Path("secrets.json")
-secrets_data = json.loads(SECRETS_PATH.read_text(encoding="utf-8"))
+secrets_data = json.loads(Path("secrets.json").read_text(encoding="utf-8"))
 USER_AGENT = f"cleanup-coordinator_posts-worker/1.2 (by {secrets_data['e621_username']})"
 
 POSTS_URL = "https://e621.net/posts.json"
-
 CHUNK_LIMIT = 320
 
 post_decoder = msgspec.json.Decoder(type=list[PostData])
-
 
 async def fetch_and_update_posts_metadata_bulk(
     post_ids: list[int], client: httpx.AsyncClient | None = None
