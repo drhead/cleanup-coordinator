@@ -33,7 +33,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Middleware
 @app.middleware("http")
-async def enforce_https_for_cloudflare(
+async def enforce_https(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
 ) -> Response:
     forwarded_proto = request.headers.get("x-forwarded-proto", "").lower()

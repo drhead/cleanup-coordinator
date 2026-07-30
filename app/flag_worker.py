@@ -4,13 +4,13 @@ import asyncio
 import json
 from pathlib import Path
 import sqlite3
-import msgspec
 
+import msgspec
 import httpx
 
 from app.db import get_db
 from app.rate_limiter import e621_limiter
-from app.schemas import E621PostFlagItem
+from app.structs import E621PostFlagItem
 
 secrets_data = json.loads(Path("secrets.json").read_text(encoding="utf-8"))
 USER_AGENT = f"cleanup-coordinator_flag-worker/1.1 (by {secrets_data['e621_username']})"
@@ -26,7 +26,7 @@ def get_known_flag_ids(conn: sqlite3.Connection) -> set[int]:
     return {r[0] for r in rows}
 
 
-async def fetch_and_sync_post_flags(
+async def refresh_post_flags(
     post_id: int, client: httpx.AsyncClient
 ) -> None:
     """Queries e621 for a post's flags and upserts them into the database."""
@@ -51,7 +51,7 @@ async def fetch_and_sync_post_flags(
             )
 
 
-async def poll_e621_flags_once(client: httpx.AsyncClient) -> None:
+async def fetch_all_new_flags(client: httpx.AsyncClient) -> None:
     """Executes a poll cycle fetching flags until overlapping with known DB state."""
     with get_db() as conn:
         known_ids = get_known_flag_ids(conn)
@@ -131,7 +131,7 @@ async def flag_poller_loop() -> None:
     ) as client:
         while True:
             try:
-                await poll_e621_flags_once(client)
+                await fetch_all_new_flags(client)
             except asyncio.CancelledError:
                 print("[FlagWorker] Background worker stopping...")
                 break

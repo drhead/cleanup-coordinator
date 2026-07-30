@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from fastapi import Request
 
 from app.db import get_db
-from app.post_worker import refresh_batch_posts_background
+from app.post_worker import refresh_batch_posts
 
 def get_client_ip(request: Request) -> str:
     """Extracts client IP address respecting reverse proxies."""
@@ -33,7 +33,7 @@ async def clear_expired_leases() -> None:
                 "DELETE FROM leases WHERE expires_at <= ?;", (now_iso,)
             )
             for bid in expired_batch_ids:
-                asyncio.create_task(refresh_batch_posts_background(bid))
+                asyncio.create_task(refresh_batch_posts(bid))
 
 
 async def lease_poller_loop() -> None:

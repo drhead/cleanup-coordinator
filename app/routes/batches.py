@@ -7,7 +7,7 @@ from fastapi import BackgroundTasks, HTTPException, Request, APIRouter
 
 from app.db import get_db
 from app.leases import clear_expired_leases, get_client_ip
-from app.post_worker import fetch_and_update_posts_metadata_bulk, refresh_batch_posts_background
+from app.post_worker import refresh_posts_metadata, refresh_batch_posts
 
 router = APIRouter()
 
@@ -120,7 +120,7 @@ def revoke_batch_lease(
             else 0
         )
         if held_duration >= 15:
-            background_tasks.add_task(refresh_batch_posts_background, batch_id)
+            background_tasks.add_task(refresh_batch_posts, batch_id)
         else:
             conn.execute(
                 "UPDATE batches SET status = 'AVAILABLE' WHERE batch_id = ?;",
@@ -171,6 +171,6 @@ async def refresh_batch(batch_id: str, request: Request) -> dict[str, Any]:
             status_code=404, detail="Batch not found or contains no posts."
         )
 
-    await fetch_and_update_posts_metadata_bulk(post_ids)
+    await refresh_posts_metadata(post_ids)
 
     return {"status": "success", "batch_id": batch_id}

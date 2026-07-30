@@ -1,13 +1,14 @@
 import json
 from pathlib import Path
-import msgspec
+from typing import Any
 
 import httpx
-from typing import Any
+import msgspec
+
 from app.rate_limiter import e621_limiter
 from app.db import get_db
-from app.schemas import PostData
-from app.flag_worker import fetch_and_sync_post_flags
+from app.structs import PostData
+from app.flag_worker import refresh_post_flags
 
 secrets_data = json.loads(Path("secrets.json").read_text(encoding="utf-8"))
 USER_AGENT = f"cleanup-coordinator_posts-worker/1.2 (by {secrets_data['e621_username']})"
@@ -17,7 +18,7 @@ CHUNK_LIMIT = 320
 
 post_decoder = msgspec.json.Decoder(type=list[PostData])
 
-async def fetch_and_update_posts_metadata_bulk(
+async def refresh_posts_metadata(
     post_ids: list[int], client: httpx.AsyncClient | None = None
 ) -> list[dict[str, Any]]:
     """Fetches canonical post metadata from e621 in 320-item chunks and updates cluster_posts in bulk."""
@@ -71,7 +72,7 @@ async def fetch_and_update_posts_metadata_bulk(
                         local_flagged != post.flags.flagged
                         or local_deleted != post.flags.deleted
                     ):
-                        await fetch_and_sync_post_flags(post.id, client)
+                        await refresh_post_flags(post.id, client)
 
                 tags_by_category: dict[str, list[str]] = {}
                 for category_name, tag_list in post.tags.items():
@@ -121,7 +122,7 @@ async def fetch_and_update_posts_metadata_bulk(
 
     return updated_posts
 
-async def refresh_batch_posts_background(batch_id: int) -> None:
+async def refresh_batch_posts(batch_id: int) -> None:
     """Fetches fresh metadata for all posts in a batch and resets status."""
     try:
         with get_db() as conn:
@@ -132,41 +133,7 @@ async def refresh_batch_posts_background(batch_id: int) -> None:
             ).fetchall()
             post_ids = [r[0] for r in rows]
 
-        await fetch_and_update_posts_metadata_bulk(post_ids)
+        await refresh_posts_metadata(post_ids)
 
     except Exception as e:
         print(f"[BatchRefresh] Error refreshing batch #{batch_id}: {e}")
-
-def is_cluster_parentage_resolved(posts: list[dict[str, Any]]) -> bool:
-    """Checks whether cluster posts share a unified parentage relationship."""
-    if len(posts) < 2:
-        return False
-
-    parents = [p["parent_id"] for p in posts]
-    first_parent = parents[0]
-    if first_parent is not None and all(p_id == first_parent for p_id in parents):
-        return True
-
-    for root_post in posts:
-        root_id = root_post["post_id"]
-        children_count = sum(
-            1 for p in posts if p["post_id"] != root_id and p["parent_id"] == root_id
-        )
-        if children_count == len(posts) - 1:
-            return True
-
-    return False
-
-
-def is_cluster_pool_resolved(posts: list[dict[str, Any]]) -> bool:
-    """Returns True if all posts in a cluster share at least one common pool ID."""
-    if not posts:
-        return False
-    if len(posts) == 1:
-        return True
-
-    shared_pools = set(posts[0].get("pool_ids") or [])
-    for post in posts[1:]:
-        shared_pools &= set(post.get("pool_ids") or [])
-
-    return len(shared_pools) > 0

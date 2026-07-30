@@ -1,10 +1,8 @@
 """E621 tag blacklist parsing and cluster evaluation logic."""
 
-import base64
 from fnmatch import fnmatch
 import re
 from typing import Any
-from urllib.parse import unquote
 
 RATING_MAP: dict[str, str] = {
     "s": "s",
@@ -16,7 +14,6 @@ RATING_MAP: dict[str, str] = {
 }
 
 RATING_ORDER: dict[str, int] = {"e": 3, "q": 2, "s": 1}
-
 
 class TermMatcher:
     """Matches a single tag term, wildcard pattern, or rating specifier."""
@@ -153,24 +150,6 @@ class E621BlacklistEvaluator:
             if rule.matches(tags, rating):
                 return True, rule.raw_line
         return False, None
-
-
-def decode_blacklist_header(header_val: str | None) -> str | None:
-    """Decodes a URL-encoded or Base64-encoded blacklist header string."""
-    if not header_val:
-        return None
-
-    # Try Base64 decoding first
-    try:
-        return base64.b64decode(header_val).decode("utf-8")
-    except Exception:
-        pass
-
-    # Fall back to standard URL unquoting
-    try:
-        return unquote(header_val)
-    except Exception:
-        return header_val
 
 
 def get_cluster_union_tags_and_rating(
