@@ -38,3 +38,5 @@ data/
 
 # Profiles
 /profile*
+
+/tailwindcss

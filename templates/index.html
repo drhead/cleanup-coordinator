@@ -7,7 +7,7 @@
     <title>E621 Cleanup Coordinator</title>
     
     <!-- Third-Party Assets (Tailwind CSS & Alpine.js) -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/main.css">
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     
     <!-- Alpine Cloak Utility -->
@@ -283,7 +283,7 @@
                 <template x-for="cluster in activeBatch?.clusters" :key="cluster.cluster_id">
                     <!-- Individual Cluster Card -->
                     <div class="border rounded-lg p-4 transition"
-                         :class="cluster.is_resolved ? 'bg-gray-950 border-gray-850 opacity-80' : 'bg-gray-900 border-gray-800'">
+                         :class="cluster.is_resolved ? 'bg-gray-950 border-gray-800 opacity-80' : 'bg-gray-900 border-gray-800'">
                         
                         <!-- Cluster Header Line (Collapsible Trigger) -->
                         <div class="flex flex-wrap items-center justify-between gap-2 cursor-pointer select-none"
@@ -539,7 +539,7 @@
                     <p>Cluster cards show fully expanded tag lists and ratings so you know what you are looking at beforehand. The <span class="text-gray-200 font-semibold">Copy Merged Tags</span> button will copy all tags present in the cluster (except different artist tags). You're encouraged to use this to add more valid tags to posts, but you should make sure they actually are valid before submitting on e621.</p>
 
                     <!-- P7: Discrepancy highlights (yellow boxes) -->
-                    <p>Automatic warning highlights draw attention to discrepancies within a cluster, like mismatched artist tags or conflicting ratings on identical posts. Review these carefully, as resolving them may require updating tags or filing an alias request. The warning should be automatically cleared once it is resolved.</p>
+                    <p>Some discrepancies within a cluster are automatically pointed out, like mismatched artist tags or conflicting ratings on identical posts. Review these carefully, as resolving them may require updating tags or filing an alias request. The warning should be automatically cleared once it is resolved.</p>
 
                     <!-- P8: Blacklist functionality -->
                     <p>You can manage your blacklist in the header. It defaults to e621's standard syntax and list, collapsing any clusters containing blacklisted content. Hovering over a <span class="bg-gray-800 text-gray-200 px-1 py-0.5 rounded font-mono text-[10px]">BLACKLISTED</span> badge reveals the exact rule that triggered it.</p>
@@ -577,7 +577,7 @@
 
                 <textarea x-model="blacklistText"
                           rows="8"
-                          class="w-full bg-gray-950 border border-gray-800 rounded p-3 text-xs font-mono text-gray-200 focus:outline-none focus:border-blue-500 resize-none flex-1 min-h-[300px]"
+                          class="w-full bg-gray-950 border border-gray-800 rounded p-3 text-xs font-mono text-gray-200 focus:outline-none focus:border-blue-500 resize-none flex-1 min-h-75"
                           placeholder="e.g. gore&#10;rating:e cub&#10;~cat ~dog"></textarea>
             </div>
 
