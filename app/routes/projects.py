@@ -11,26 +11,6 @@ from app.db import get_db
 from app.structs import ClusterPost, TagsCategorized
 from app.leases import clear_expired_leases, get_client_ip
 
-DEFAULT_BLACKLIST = """
-# Violence
-gore
-snuff
-rape
-
-# ABDL
-young -rating:s
-diaper -rating:s
-
-# Fetish
-feces
-urine
-fart_fetish
-realistic_feral rating:e
-
-# Controversial
-politics
-"""
-
 router = APIRouter()
 
 
