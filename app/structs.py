@@ -41,3 +41,7 @@ class ClusterPost(msgspec.Struct, kw_only=True):
     tags_categorized: TagsCategorized = msgspec.field(default_factory=TagsCategorized)
     is_flagged: bool = False
     is_deleted: bool = False
+    image_width: int | None = None
+    image_height: int | None = None
+    image_format: str | None = None
+    image_quality: int | None = None

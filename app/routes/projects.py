@@ -88,13 +88,8 @@ tags_decoder = msgspec.json.Decoder(TagsCategorized)
 encoder = msgspec.json.Encoder()
 
 def parse_cluster_post(row: asyncpg.Record) -> ClusterPost:
-    raw_json = row["tags_json"]
-    if isinstance(raw_json, str):
-        raw_json = raw_json.encode("utf-8")
-    elif raw_json is None:
-        raw_json = b"{}"
+    raw_json = row["tags_json"] or "{}"
 
-    # msgspec decodes raw bytes/JSON string directly into TagsCategorized schema
     tags = tags_decoder.decode(raw_json)
 
     return ClusterPost(
@@ -105,6 +100,10 @@ def parse_cluster_post(row: asyncpg.Record) -> ClusterPost:
         tags_categorized=tags,
         is_flagged=bool(row["is_flagged"]),
         is_deleted=bool(row["is_deleted"]),
+        image_width=row["image_width"],
+        image_height=row["image_height"],
+        image_format=row["image_format"],
+        image_quality=row["image_quality"],
     )
 
 
@@ -155,10 +154,11 @@ async def get_project_batches(
         flat_rows = await conn.fetch(
             """
             SELECT c.batch_id, c.cluster_id, c.cluster_index, c.note, c.is_resolved, 
-                c.manual_resolution, cp.post_id, cp.parent_id, cp.pool_ids, 
-                cp.rating, cp.tags_json,
-                COALESCE(fc.active_deletion_count > 0, FALSE) AS is_deleted, 
-                COALESCE(fc.active_flag_count > 0, FALSE) AS is_flagged
+                   c.manual_resolution, cp.post_id, cp.parent_id, cp.pool_ids, 
+                   cp.rating, cp.tags_json,
+                   cp.image_width, cp.image_height, cp.image_format, cp.image_quality,
+                   COALESCE(fc.active_deletion_count > 0, FALSE) AS is_deleted, 
+                   COALESCE(fc.active_flag_count > 0, FALSE) AS is_flagged
             FROM clusters c
             JOIN batches b ON c.batch_id = b.batch_id
             LEFT JOIN cluster_posts cp ON c.cluster_id = cp.cluster_id
@@ -205,8 +205,7 @@ async def get_project_batches(
                 union_tags, canonical_rating
             )
 
-            is_res = bool(c_info["is_resolved"])
-            if is_res:
+            if c_info["is_resolved"]:
                 resolved_count += 1
 
             cluster_list.append(
@@ -214,7 +213,7 @@ async def get_project_batches(
                     cluster_id=c_info["cluster_id"],
                     cluster_index=c_info["cluster_index"],
                     note=c_info["note"],
-                    is_resolved=is_res,
+                    is_resolved=c_info["is_resolved"],
                     manual_resolution=bool(c_info["manual_resolution"]),
                     is_blacklisted=is_blacklisted,
                     matched_rule=matched_rule,
@@ -223,16 +222,12 @@ async def get_project_batches(
                 )
             )
 
-        leased_until_str = (
-            b_row["leased_until"].isoformat() if b_row["leased_until"] else None
-        )
-
         batch_list.append(
             Batch(
                 batch_id=b_id,
                 project_id=b_row["project_id"],
                 batch_number=b_row["batch_number"],
-                leased_until=leased_until_str,
+                leased_until=b_row["leased_until"].isoformat() if b_row["leased_until"] else None,
                 is_leased_by_you=b_row["leased_by_ip"] == client_ip,
                 status=b_row["status"],
                 resolved_count=resolved_count,
