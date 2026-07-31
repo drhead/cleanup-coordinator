@@ -1,0 +1,212 @@
+const RATING_MAP = {
+    s: 's',
+    safe: 's',
+    q: 'q',
+    questionable: 'q',
+    e: 'e',
+    explicit: 'e',
+};
+
+const RATING_ORDER = { s: 1, q: 2, e: 3 };
+
+class TermMatcher {
+    constructor(rawTerm) {
+        this.rawTerm = rawTerm.toLowerCase().trim();
+        this.isRating = this.rawTerm.startsWith('rating:');
+        this.allowedRatings = new Set();
+        this.hasWildcard = false;
+        this.regex = null;
+
+        if (this.isRating) {
+            const ratingVal = this.rawTerm.split(':', 2)[1] || '';
+            for (const p of ratingVal.split(',')) {
+                const clean = p.trim();
+                if (clean) this.allowedRatings.add(RATING_MAP[clean] || clean);
+            }
+        } else {
+            this.hasWildcard = this.rawTerm.includes('*');
+            if (this.hasWildcard) {
+                const escaped = this.rawTerm
+                    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+                    .replace(/\*/g, '.*');
+                this.regex = new RegExp(`^${escaped}$`, 'i');
+            }
+        }
+    }
+
+    matches(tagsSet, rating) {
+        if (this.isRating) return this.allowedRatings.has(rating);
+        if (this.hasWildcard) {
+            for (const tag of tagsSet) {
+                if (this.regex.test(tag)) return true;
+            }
+            return false;
+        }
+        return tagsSet.has(this.rawTerm);
+    }
+}
+
+class BlacklistRule {
+    constructor(line) {
+        this.rawLine = line.trim();
+        this.positiveTerms = [];
+        this.negativeTerms = [];
+        this.orGroups = [];
+        this._parse(line);
+    }
+
+    _parse(line) {
+        if (line.includes('#')) {
+            line = line.split('#')[0];
+        }
+        line = line.trim();
+        if (!line) return;
+
+        const parsePrefix = (tok) => {
+            if (tok.startsWith('-')) return ['-', tok.slice(1)];
+            if (tok.startsWith('~')) return ['~', tok.slice(1)];
+            return ['', tok];
+        };
+
+        const tokens = line.match(/-\(\s*[^)]+\s*\)|\(\s*[^)]+\s*\)|[^\s()]+/g) || [];
+        let standaloneOrGroup = [];
+
+        for (let token of tokens) {
+            token = token.trim();
+            if (!token) continue;
+
+            if (token.startsWith('-(') && token.endsWith(')')) {
+                const inner = token.slice(2, -1).trim();
+                for (const itok of inner.split(/\s+/)) {
+                    const [, clean] = parsePrefix(itok);
+                    if (clean) this.negativeTerms.push(new TermMatcher(clean));
+                }
+            } else if (token.startsWith('(') && token.endsWith(')')) {
+                const inner = token.slice(1, -1).trim();
+                const group = [];
+                for (const itok of inner.split(/\s+/)) {
+                    const [, clean] = parsePrefix(itok);
+                    if (clean) group.push(new TermMatcher(clean));
+                }
+                if (group.length > 0) this.orGroups.push(group);
+            } else {
+                const [prefix, clean] = parsePrefix(token);
+                if (!clean) continue;
+
+                if (prefix === '-') {
+                    if (standaloneOrGroup.length > 0) {
+                        this.orGroups.push(standaloneOrGroup);
+                        standaloneOrGroup = [];
+                    }
+                    this.negativeTerms.push(new TermMatcher(clean));
+                } else if (prefix === '~') {
+                    standaloneOrGroup.push(new TermMatcher(clean));
+                } else {
+                    if (standaloneOrGroup.length > 0) {
+                        this.orGroups.push(standaloneOrGroup);
+                        standaloneOrGroup = [];
+                    }
+                    this.positiveTerms.push(new TermMatcher(clean));
+                }
+            }
+        }
+
+        if (standaloneOrGroup.length > 0) {
+            this.orGroups.push(standaloneOrGroup);
+        }
+    }
+
+    isEmpty() {
+        return (
+            this.positiveTerms.length === 0 &&
+            this.negativeTerms.length === 0 &&
+            this.orGroups.length === 0
+        );
+    }
+
+    matches(tagsSet, rating) {
+        if (this.isEmpty()) return false;
+
+        for (const term of this.positiveTerms) {
+            if (!term.matches(tagsSet, rating)) return false;
+        }
+        for (const term of this.negativeTerms) {
+            if (term.matches(tagsSet, rating)) return false;
+        }
+        for (const group of this.orGroups) {
+            if (!group.some((term) => term.matches(tagsSet, rating))) return false;
+        }
+        return true;
+    }
+}
+
+export class E621BlacklistEvaluator {
+    constructor(blacklistText) {
+        this.rules = [];
+        if (blacklistText) {
+            for (const line of blacklistText.split('\n')) {
+                const rule = new BlacklistRule(line);
+                if (!rule.isEmpty()) {
+                    this.rules.push(rule);
+                }
+            }
+        }
+    }
+
+    evaluate(tagsSet, rating) {
+        for (const rule of this.rules) {
+            if (rule.matches(tagsSet, rating)) {
+                return { isBlacklisted: true, matchedRule: rule.rawLine };
+            }
+        }
+        return { isBlacklisted: false, matchedRule: null };
+    }
+}
+
+export function getClusterUnionTagsAndRating(clusterPosts) {
+    const unionTags = new Set();
+    let maxRatingScore = 0;
+    let canonicalRating = 's';
+
+    if (!clusterPosts) return { unionTags, canonicalRating };
+
+    for (const post of clusterPosts) {
+        const pRating = (post.rating || 's').toLowerCase();
+        const score = RATING_ORDER[pRating] || 1;
+        if (score > maxRatingScore) {
+            maxRatingScore = score;
+            canonicalRating = pRating;
+        }
+
+        if (post.tags_categorized) {
+            if (Array.isArray(post.tags_categorized)) {
+                for (const tag of post.tags_categorized) {
+                    unionTags.add(String(tag).toLowerCase());
+                }
+            } else if (typeof post.tags_categorized === 'object') {
+                for (const category of Object.values(post.tags_categorized)) {
+                    if (Array.isArray(category)) {
+                        for (const tag of category) {
+                            unionTags.add(String(tag).toLowerCase());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return { unionTags, canonicalRating };
+}
+
+export function applyBlacklistToCluster(cluster, evaluator) {
+    const { unionTags, canonicalRating } = getClusterUnionTagsAndRating(cluster.posts);
+    const { isBlacklisted, matchedRule } = evaluator.evaluate(unionTags, canonicalRating);
+
+    cluster.canonical_rating = canonicalRating;
+    cluster.is_blacklisted = isBlacklisted;
+    cluster.matched_rule = matchedRule;
+}
+
+window.E621BlacklistEvaluator = E621BlacklistEvaluator;
+window.applyBlacklistToCluster = applyBlacklistToCluster;
+window.getClusterUnionTagsAndRating = getClusterUnionTagsAndRating;

@@ -1,17 +1,15 @@
 """Projects router migrated to async PostgreSQL."""
 
-import base64
 from typing import Any
 from collections import defaultdict
 
-from fastapi import APIRouter, Header, Request, Response
+from fastapi import APIRouter, Request, Response
 import msgspec
 import asyncpg
 
 from app.db import get_db
 from app.structs import ClusterPost, TagsCategorized
 from app.leases import clear_expired_leases, get_client_ip
-from app.blacklist import E621BlacklistEvaluator, get_cluster_union_tags_and_rating
 
 DEFAULT_BLACKLIST = """
 # Violence
@@ -61,9 +59,6 @@ class Cluster(msgspec.Struct, kw_only=True):
     note: str | None = None
     is_resolved: bool
     manual_resolution: bool
-    is_blacklisted: bool
-    matched_rule: str | None = None
-    canonical_rating: str
     posts: list[ClusterPost]
 
 
@@ -110,20 +105,10 @@ def parse_cluster_post(row: asyncpg.Record) -> ClusterPost:
 @router.get("/api/v1/projects/{project_id}/batches")
 async def get_project_batches(
     project_id: str,
-    request: Request,
-    x_blacklist: str | None = Header(default=None),
+    request: Request
 ) -> Response:
     await clear_expired_leases()
     client_ip = get_client_ip(request)
-
-    active_blacklist_text = DEFAULT_BLACKLIST
-    if x_blacklist:
-        try:
-            active_blacklist_text = base64.b64decode(x_blacklist).decode("utf-8")
-        except Exception:
-            pass
-
-    evaluator = E621BlacklistEvaluator(active_blacklist_text)
 
     pool = get_db()
     async with pool.acquire() as conn:
@@ -200,11 +185,6 @@ async def get_project_batches(
             c_info = c_data["info"]
             posts = c_data["posts"]
 
-            union_tags, canonical_rating = get_cluster_union_tags_and_rating(posts)
-            is_blacklisted, matched_rule = evaluator.evaluate(
-                union_tags, canonical_rating
-            )
-
             if c_info["is_resolved"]:
                 resolved_count += 1
 
@@ -215,9 +195,6 @@ async def get_project_batches(
                     note=c_info["note"],
                     is_resolved=c_info["is_resolved"],
                     manual_resolution=bool(c_info["manual_resolution"]),
-                    is_blacklisted=is_blacklisted,
-                    matched_rule=matched_rule,
-                    canonical_rating=canonical_rating,
                     posts=posts,
                 )
             )

@@ -565,14 +565,14 @@
             <div class="flex items-center justify-between border-b border-gray-800 pb-3 shrink-0">
                 <h3 class="text-lg font-bold text-gray-100 flex items-center space-x-2">
                     <span>🚫</span>
-                    <span>e621 Blacklist Configuration</span>
+                    <span>Blacklist Configuration</span>
                 </h3>
                 <button @click="showBlacklistModal = false" class="text-gray-400 hover:text-white font-bold text-lg">&times;</button>
             </div>
 
             <div class="my-4 space-y-3 flex-1 flex flex-col overflow-y-auto min-h-0">
                 <p class="text-xs text-gray-400 leading-relaxed shrink-0">
-                    Paste your e621 blacklist syntax line-by-line below (supports tags, wildcards, ratings, and syntax groupings).
+                    Paste your e621 blacklist below to automatically hide matching clusters.
                 </p>
 
                 <textarea x-model="blacklistText"
@@ -584,7 +584,7 @@
             <div class="flex items-center justify-between pt-2 border-t border-gray-800 shrink-0">
                 <button @click="saveBlacklist()"
                         class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-5 py-2 rounded font-semibold transition">
-                    Save & Re-evaluate Batches
+                    Save
                 </button>
                 <button @click="showBlacklistModal = false"
                         class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs px-4 py-2 rounded font-medium transition">
@@ -612,7 +612,7 @@
             </div>
         </template>
     </div>
-
+    <script type="module" src="/static/js/blacklist.js"></script>
     <script src="/static/js/app.js"></script>
 </body>
 </html>

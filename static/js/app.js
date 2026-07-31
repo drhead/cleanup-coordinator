@@ -54,8 +54,18 @@ function app() {
         async saveBlacklist() {
             localStorage.setItem('e621_blacklist', this.blacklistText);
             this.showBlacklistModal = false;
-            this.showToast('Blacklist updated. Refreshing evaluations...', 'info');
-            await this.reloadBatches(true, null, true); 
+
+            // Evaluate clusters locally in memory
+            const evaluator = new E621BlacklistEvaluator(this.blacklistText || '');
+            for (const batch of this.batches) {
+                if (!batch.clusters) continue;
+                for (const cluster of batch.clusters) {
+                    applyBlacklistToCluster(cluster, evaluator);
+                    cluster.collapsed = cluster.is_resolved || cluster.is_blacklisted;
+                }
+            }
+
+            this.showToast('Blacklist updated.', 'success');
         },
 
         checkLocalLeaseExpiration() {
@@ -96,14 +106,8 @@ function app() {
             if (!this.activeProject) return;
 
             try {
-                const encodedBlacklist = btoa(unescape(encodeURIComponent(this.blacklistText || '')));
-
                 const [batchesRes, leasesRes] = await Promise.all([
-                    fetch(`/api/v1/projects/${this.activeProject.project_id}/batches`, {
-                        headers: {
-                            'X-Blacklist': encodedBlacklist
-                        }
-                    }),
+                    fetch(`/api/v1/projects/${this.activeProject.project_id}/batches`),
                     fetch('/api/v1/leases')
                 ]);
 
@@ -113,11 +117,20 @@ function app() {
                 const activeLeases = leasesRes.ok ? (await leasesRes.json()).leases || [] : [];
                 const incomingBatches = batchesData.batches || [];
 
+                const evaluator = new E621BlacklistEvaluator(this.blacklistText || '');
+
+                const processCluster = (c, forceReset = false) => {
+                    applyBlacklistToCluster(c, evaluator);
+                    if (forceReset || c.collapsed === undefined) {
+                        c.collapsed = c.is_resolved || c.is_blacklisted;
+                    }
+                };
+
                 if (this.batches.length === 0) {
                     incomingBatches.forEach(b => {
                         if (b.clusters) {
                             b.clusters.forEach(c => {
-                                c.collapsed = c.is_resolved || c.is_blacklisted; 
+                                processCluster(c);
                                 c.isRefreshing = false;
                             });
                         } else {
@@ -131,7 +144,7 @@ function app() {
                         if (!existingBatch) {
                             if (newBatch.clusters) {
                                 newBatch.clusters.forEach(c => {
-                                    c.collapsed = c.is_resolved || c.is_blacklisted;
+                                    processCluster(c);
                                     c.isRefreshing = false;
                                 });
                             } else {
@@ -162,13 +175,6 @@ function app() {
                                     existingCluster.note = newCluster.note;
                                     existingCluster.is_resolved = newCluster.is_resolved;
                                     existingCluster.manual_resolution = newCluster.manual_resolution;
-                                    existingCluster.is_blacklisted = newCluster.is_blacklisted;
-                                    existingCluster.matched_rule = newCluster.matched_rule;
-                                    existingCluster.canonical_rating = newCluster.canonical_rating;
-
-                                    if (forceCollapseReset) {
-                                        existingCluster.collapsed = newCluster.is_resolved || newCluster.is_blacklisted;
-                                    }
 
                                     if (refreshedClusterId === existingCluster.cluster_id || 
                                         existingCluster.posts.length !== newCluster.posts.length ||
@@ -176,11 +182,13 @@ function app() {
                                         existingCluster.posts = newCluster.posts;
                                     }
 
+                                    processCluster(existingCluster, forceCollapseReset);
+
                                     if (refreshedClusterId && existingCluster.cluster_id === refreshedClusterId) {
                                         existingCluster.isRefreshing = false;
                                     }
                                 } else {
-                                    newCluster.collapsed = newCluster.is_resolved || newCluster.is_blacklisted;
+                                    processCluster(newCluster);
                                     newCluster.isRefreshing = false;
                                     existingBatch.clusters.push(newCluster);
                                 }
