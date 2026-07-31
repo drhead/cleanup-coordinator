@@ -282,3 +282,72 @@ WHEN (
     OLD.custom_note IS DISTINCT FROM NEW.custom_note
 )
 EXECUTE FUNCTION fn_reevaluate_cluster_from_cluster();
+
+CREATE OR REPLACE FUNCTION refresh_post_tags_json_on_insert()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE cluster_posts cp
+    SET tags_json = COALESCE(tag_agg.tags_json, '{}'::jsonb)
+    FROM (
+        SELECT 
+            sub.post_id,
+            jsonb_object_agg(COALESCE(upper(sub.category), 'GENERAL'), sub.tag_names) AS tags_json
+        FROM (
+            SELECT 
+                pt.post_id, 
+                t.category, 
+                jsonb_agg(pt.tag_name) AS tag_names
+            FROM post_tags pt
+            JOIN tags t ON pt.tag_name = t.tag_name
+            WHERE pt.post_id IN (SELECT DISTINCT post_id FROM inserted_tags)
+            GROUP BY pt.post_id, t.category
+        ) sub
+        GROUP BY sub.post_id
+    ) tag_agg
+    WHERE cp.post_id = tag_agg.post_id;
+
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION refresh_post_tags_json_on_delete()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE cluster_posts cp
+    SET tags_json = COALESCE(tag_agg.tags_json, '{}'::jsonb)
+    FROM (
+        SELECT 
+            sub.post_id,
+            jsonb_object_agg(COALESCE(upper(sub.category), 'GENERAL'), sub.tag_names) AS tags_json
+        FROM (
+            SELECT 
+                pt.post_id, 
+                t.category, 
+                jsonb_agg(pt.tag_name) AS tag_names
+            FROM post_tags pt
+            JOIN tags t ON pt.tag_name = t.tag_name
+            WHERE pt.post_id IN (SELECT DISTINCT post_id FROM deleted_tags)
+            GROUP BY pt.post_id, t.category
+        ) sub
+        GROUP BY sub.post_id
+    ) tag_agg
+    WHERE cp.post_id = tag_agg.post_id;
+
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_refresh_post_tags_json_ins ON post_tags;
+DROP TRIGGER IF EXISTS trg_refresh_post_tags_json_del ON post_tags;
+
+CREATE TRIGGER trg_refresh_post_tags_json_ins
+AFTER INSERT ON post_tags
+REFERENCING NEW TABLE AS inserted_tags
+FOR EACH STATEMENT
+EXECUTE FUNCTION refresh_post_tags_json_on_insert();
+
+CREATE TRIGGER trg_refresh_post_tags_json_del
+AFTER DELETE ON post_tags
+REFERENCING OLD TABLE AS deleted_tags
+FOR EACH STATEMENT
+EXECUTE FUNCTION refresh_post_tags_json_on_delete();

@@ -9,7 +9,7 @@ import msgspec
 import asyncpg
 
 from app.db import get_db
-from app.structs import ClusterPost
+from app.structs import ClusterPost, TagsCategorized
 from app.leases import clear_expired_leases, get_client_ip
 from app.blacklist import E621BlacklistEvaluator, get_cluster_union_tags_and_rating
 
@@ -84,13 +84,25 @@ class ProjectBatchesResponse(msgspec.Struct, kw_only=True):
     batches: list[Batch]
 
 
+tags_decoder = msgspec.json.Decoder(TagsCategorized)
+encoder = msgspec.json.Encoder()
+
 def parse_cluster_post(row: asyncpg.Record) -> ClusterPost:
+    raw_json = row["tags_json"]
+    if isinstance(raw_json, str):
+        raw_json = raw_json.encode("utf-8")
+    elif raw_json is None:
+        raw_json = b"{}"
+
+    # msgspec decodes raw bytes/JSON string directly into TagsCategorized schema
+    tags = tags_decoder.decode(raw_json)
+
     return ClusterPost(
         post_id=row["post_id"],
         cluster_id=row["cluster_id"],
         rating=row["rating"] or "s",
         pool_ids=row["pool_ids"] or [],
-        tags_categorized=row["tags_json"] if isinstance(row["tags_json"], dict) else msgspec.json.decode(row["tags_json"] or "{}", type=dict[str, list[str]]),
+        tags_categorized=tags,
         is_flagged=bool(row["is_flagged"]),
         is_deleted=bool(row["is_deleted"]),
     )
@@ -116,7 +128,7 @@ async def get_project_batches(
 
     pool = get_db()
     async with pool.acquire() as conn:
-        # 1. Single query for all batches in project
+        # 1. Fetch batches
         batches_rows = await conn.fetch(
             """
             SELECT 
@@ -133,18 +145,18 @@ async def get_project_batches(
 
         if not batches_rows:
             return Response(
-                content=msgspec.json.encode(
+                content=encoder.encode(
                     ProjectBatchesResponse(project_id=project_id, batches=[])
                 ),
                 media_type="application/json",
             )
 
-        # 2. Single query for ALL clusters and ALL posts across the entire project
+        # 2. Fetch clusters and post metadata
         flat_rows = await conn.fetch(
             """
             SELECT c.batch_id, c.cluster_id, c.cluster_index, c.note, c.is_resolved, 
                 c.manual_resolution, cp.post_id, cp.parent_id, cp.pool_ids, 
-                cp.rating, cp.tags_json, 
+                cp.rating, cp.tags_json,
                 COALESCE(fc.active_deletion_count > 0, FALSE) AS is_deleted, 
                 COALESCE(fc.active_flag_count > 0, FALSE) AS is_flagged
             FROM clusters c
@@ -157,7 +169,7 @@ async def get_project_batches(
             project_id,
         )
 
-    # 3. Group posts by cluster_id, and clusters by batch_id in memory
+    # 3. Group in memory
     clusters_by_batch: dict[int, dict[int, dict[str, Any]]] = defaultdict(
         lambda: defaultdict(lambda: {"info": None, "posts": []})
     )
@@ -170,10 +182,11 @@ async def get_project_batches(
         if c_entry["info"] is None:
             c_entry["info"] = row
 
-        if row["post_id"] is not None:
+        pid = row["post_id"]
+        if pid is not None:
             c_entry["posts"].append(parse_cluster_post(row))
 
-    # 4. Construct final response objects
+    # 4. Build response structs
     batch_list: list[Batch] = []
 
     for b_row in batches_rows:
@@ -210,7 +223,9 @@ async def get_project_batches(
                 )
             )
 
-        leased_until_str = b_row["leased_until"].isoformat() if b_row["leased_until"] else None
+        leased_until_str = (
+            b_row["leased_until"].isoformat() if b_row["leased_until"] else None
+        )
 
         batch_list.append(
             Batch(
@@ -230,6 +245,6 @@ async def get_project_batches(
         project_id=project_id, batches=batch_list
     )
     return Response(
-        content=msgspec.json.encode(response_payload),
+        content=encoder.encode(response_payload),
         media_type="application/json",
     )

@@ -22,11 +22,22 @@ class E621PostFlagItem(msgspec.Struct, kw_only=True):
     is_resolved: bool
     is_deletion: bool
 
+class TagsCategorized(msgspec.Struct, kw_only=True, rename="upper", omit_defaults=True):
+    artist: list[str] = []
+    contributor: list[str] = []
+    copyright: list[str] = []
+    character: list[str] = []
+    species: list[str] = []
+    general: list[str] = []
+    meta: list[str] = []
+    lore: list[str] = []
+    invalid: list[str] = []
+
 class ClusterPost(msgspec.Struct, kw_only=True):
     post_id: int
     cluster_id: int
     rating: str = "s"
     pool_ids: list[int] = msgspec.field(default_factory=list[int])
-    tags_categorized: dict[str, list[str]] = msgspec.field(default_factory=dict[str, list[str]])
+    tags_categorized: TagsCategorized = msgspec.field(default_factory=TagsCategorized)
     is_flagged: bool = False
     is_deleted: bool = False

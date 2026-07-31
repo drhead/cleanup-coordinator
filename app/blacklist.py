@@ -3,7 +3,9 @@
 from fnmatch import fnmatch
 import re
 
-from app.structs import ClusterPost
+import msgspec
+
+from app.structs import ClusterPost, TagsCategorized
 
 RATING_MAP: dict[str, str] = {
     "s": "s",
@@ -152,6 +154,7 @@ class E621BlacklistEvaluator:
                 return True, rule.raw_line
         return False, None
 
+tag_field_names = [f.name for f in msgspec.structs.fields(TagsCategorized)]
 
 def get_cluster_union_tags_and_rating(
     cluster_posts: list[ClusterPost],
@@ -168,7 +171,8 @@ def get_cluster_union_tags_and_rating(
             max_rating_score = score
             canonical_rating = p_rating
 
-        for cat_tags in post.tags_categorized.values():
+        for field_name in tag_field_names:
+            cat_tags: list[str] = getattr(post.tags_categorized, field_name)
             for tag in cat_tags:
                 union_tags.add(tag.lower())
 
