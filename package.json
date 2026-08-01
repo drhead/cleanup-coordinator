@@ -1,0 +1,23 @@
+{
+  "name": "e621-cleanup-coordinator",
+  "version": "1.0.0",
+  "description": "Image board duplicate post cleanup coordinator.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drhead/cleanup-coordinator.git"
+  },
+  "license": "ISC",
+  "devDependencies": {
+    "vite": "^8.2.0",
+    "vite-plugin-html-inject": "^1.0.0"
+  },
+  "dependencies": {
+    "alpinejs": "^3.15.12"
+  }
+}

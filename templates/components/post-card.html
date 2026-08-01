@@ -1,0 +1,134 @@
+<div class="bg-gray-950 border border-gray-800/80 rounded-md p-3.5 text-xs space-y-3">
+    
+    <!-- Post Header Line (Rating Badge, Post Link, Parent Link & Dimensions/Flags) -->
+    <div class="flex items-center justify-between">
+        
+        <!-- Left Details: Rating, Post ID & Parent ID -->
+        <div class="flex items-center space-x-2">
+            <!-- Rating Badge -->
+            <template x-if="post.rating">
+                <span class="px-1.5 py-0.5 rounded text-[11px] font-bold font-mono"
+                      :class="getRatingBadgeClass(post.rating)"
+                      x-text="getRatingLabel(post.rating)"></span>
+            </template>
+
+            <!-- Post External Link -->
+            <a :href="`https://e621.net/posts/${post.post_id}`" target="_blank"
+               class="font-mono font-bold text-blue-400 hover:text-blue-300 hover:underline text-sm flex items-center space-x-1">
+                <span x-text="`#${post.post_id}`"></span>
+                <span class="text-gray-600 text-xs">&nearr;</span>
+            </a>
+
+            <!-- Parent Post External Link -->
+            <template x-if="post.parent_id">
+                <a :href="`https://e621.net/posts/${post.parent_id}`" target="_blank"
+                   class="font-mono text-[11px] text-gray-400 hover:text-blue-300 hover:underline">
+                    (Parent: #<span x-text="post.parent_id"></span>)
+                </a>
+            </template>
+        </div>
+
+        <!-- Right Details: Dimensions, Quality, Deleted/Flagged Status -->
+        <div class="flex items-center space-x-2">
+            <!-- Dimensions & Format Info Label -->
+            <template x-if="post.image_width && post.image_height">
+                <span class="font-mono text-[11px]"
+                      :class="cluster.posts.every(p => 
+                          p.image_width === post.image_width && 
+                          p.image_height === post.image_height && 
+                          p.image_format === post.image_format && 
+                          p.image_quality === post.image_quality
+                      ) ? 'text-gray-600' : 'text-gray-400'"
+                      x-text="`${post.image_width}x${post.image_height} ${post.image_format || ''}${post.image_quality !== null && post.image_quality !== undefined ? ': ' + (post.image_quality === 101 ? 'Lossless' : post.image_quality) : ''}`">
+                </span>
+            </template>
+
+            <!-- Flag Status Indicators -->
+            <template x-if="post.is_deleted">
+                <span class="bg-red-950 text-red-400 border border-red-800/50 px-1.5 py-0.5 rounded text-[10px] font-bold">DELETED</span>
+            </template>
+            <template x-if="!post.is_deleted && post.is_flagged">
+                <span class="bg-amber-950 text-amber-400 border border-amber-800/50 px-1.5 py-0.5 rounded text-[10px] font-bold">FLAGGED</span>
+            </template>
+        </div>
+    </div>
+
+    <!-- Post Pools List (if present) -->
+    <template x-if="post.pool_ids && post.pool_ids.length > 0">
+        <div class="flex flex-wrap items-center gap-1.5 pt-1">
+            <span class="text-gray-500 font-semibold text-[10px] uppercase tracking-wider">Pools:</span>
+            <template x-for="poolId in post.pool_ids" :key="poolId">
+                <a :href="`https://e621.net/pools/${poolId}`" target="_blank"
+                   class="bg-gray-900 hover:bg-gray-800 text-blue-300 border border-gray-800 text-[10px] px-1.5 py-0.5 rounded font-mono transition">
+                    Pool #<span x-text="poolId"></span>
+                </a>
+            </template>
+        </div>
+    </template>
+
+    <!-- Post Tags Display Container -->
+    <div class="bg-gray-900/90 p-2.5 rounded border border-gray-800/80 space-y-1.5">
+        
+        <!-- Post Tags Header & Copy Merged Button -->
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-1.5">
+                <span class="text-gray-500 font-semibold text-[10px] uppercase tracking-wider block">Post Tags</span>
+                <span class="text-gray-600 font-mono text-[10px] font-medium"
+                      x-text="`(${Object.values(post.tags_categorized || {}).flat().length})`"></span>
+            </div>
+            
+            <!-- Copy Merged Tags Action Button -->
+            <button type="button"
+                    @click="copyMergedTags(post, cluster.posts)"
+                    @mouseenter="setHoveredMergedTags(cluster.cluster_id, post, cluster.posts)"
+                    @mouseleave="clearHoveredMergedTags()"
+                    class="text-gray-500 hover:text-gray-300 hover:bg-gray-800/60 border border-transparent hover:border-gray-700/60 text-[10px] px-1.5 py-0.5 rounded transition flex items-center gap-1 active:scale-95 shadow-sm">
+                <span>📋 Copy Merged Tags</span>
+                
+                <!-- Merged Tag Count Delta Indicator -->
+                <span class="font-mono text-[10px] font-semibold"
+                      :class="{
+                          'text-emerald-400': getMergedTagDelta(post, cluster.posts) > 0,
+                          'text-amber-400': getMergedTagDelta(post, cluster.posts) < 0,
+                          'text-gray-600': getMergedTagDelta(post, cluster.posts) === 0
+                      }"
+                      x-text="`(${getMergedTagDelta(post, cluster.posts) > 0 ? '+' : ''}${getMergedTagDelta(post, cluster.posts)})`">
+                </span>
+            </button>
+        </div>
+
+        <!-- Empty Tags Fallback -->
+        <template x-if="getSortedTags(post.tags_categorized).length === 0">
+            <span class="text-gray-500 italic text-[11px] block">No tags available</span>
+        </template>
+        
+        <!-- Categorized Tag Pills Cloud -->
+        <div class="flex flex-wrap gap-x-2 gap-y-1">
+            <template x-for="tag in getSortedTags(post.tags_categorized)" :key="tag.category + ':' + tag.name">
+                <span class="font-mono text-[11px] leading-tight transition-all duration-150"
+                      :class="{
+                          'font-bold': !['GENERAL', 'META'].includes(tag.category),
+                          'font-normal': ['GENERAL', 'META'].includes(tag.category),
+
+                          'opacity-100': 
+                              hoveredMergedData?.clusterId == cluster.cluster_id && 
+                              hoveredMergedData?.targetPostId == post.post_id,
+
+                          'opacity-100 brightness-125 font-bold': 
+                              hoveredMergedData?.clusterId == cluster.cluster_id && 
+                              hoveredMergedData?.targetPostId != post.post_id && 
+                              hoveredMergedData?.tags.includes(tag.name),
+
+                          'opacity-30': 
+                              hoveredMergedData?.clusterId == cluster.cluster_id && 
+                              hoveredMergedData?.targetPostId != post.post_id && 
+                              !hoveredMergedData?.tags.includes(tag.name),
+
+                          'opacity-90': hoveredMergedData?.clusterId != cluster.cluster_id
+                      }"
+                      :style="getTagStyle(tag.category)"
+                      x-text="tag.name"></span>
+            </template>
+        </div>
+    </div>
+</div>

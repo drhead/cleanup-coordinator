@@ -1,0 +1,78 @@
+<div x-show="showInstructionsModal" 
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto"
+    x-cloak>
+    <div class="bg-gray-900 border border-gray-800 rounded-lg max-w-xl w-full max-h-[85vh] flex flex-col p-6 shadow-2xl my-auto"
+        @click.away="showInstructionsModal = false">
+        <div class="flex items-center justify-between border-b border-gray-800 pb-3 shrink-0">
+            <h3 class="text-lg font-bold text-gray-100 flex items-center space-x-2">
+                <span>ℹ️</span>
+                <span>Instructions</span>
+            </h3>
+            <button @click="showInstructionsModal = false" class="text-gray-400 hover:text-white font-bold text-lg">&times;</button>
+        </div>
+
+        <!-- Scrollable content wrapper -->
+        <div class="text-xs text-gray-300 space-y-4 leading-relaxed overflow-y-auto my-4 pr-1 flex-1">
+            
+            <!-- P1: What this site is -->
+            <p>Welcome! This tool coordinates cleanup projects on e621, specifically targeting duplicate uploads and unmarked post variants.</p>
+
+            <!-- Warning: Boilerplate NSFW warning -->
+            <div class="bg-red-950/50 border border-red-800/80 rounded p-2.5 text-red-200 text-xs">
+                <strong>Warning:</strong> This site links directly to explicit content. If you are under 18, leave now. You are entirely responsible for what you choose to view.
+            </div>
+
+            <!-- P2: What this site is showing you -->
+            <p>Work is organized into <strong>projects</strong> built around specific search criteria. Each project presents groups of related posts as <strong>clusters</strong> that likely need attention.</p>
+            
+            <!-- P3: How you're supposed to do things -->
+            <div class="space-y-1.5">
+                <p>To work on a cluster, open the post links and make your edits directly on e621 using your account. Always defer to specific project guidelines when available, but general rules apply:</p>
+
+                <!-- List: Specific rules and mindset -->
+                <ul class="list-disc list-inside space-y-1 text-gray-400 pl-1">
+                    <!-- Item 1: Duplicates -->
+                    <li>Only the highest-quality version of an exact image should remain on the site. Lower-quality duplicates should be flagged.</li>
+                    <!-- Item 2: Variants -->
+                    <li>Distinct variants or related posts should be linked as parent/child or grouped into a pool.</li>
+                    <!-- Item 3: Context -->
+                    <li>Check surrounding context carefully. Quality and accuracy matter far more than speed.</li>
+                </ul>
+            </div>
+
+            <!-- P4: Batch claim system -->
+            <div class="space-y-1.5">
+                <h3 class="text-xs font-bold text-gray-200 font-mono">Claiming Batches</h3>
+                <p>Claiming a batch reserves it for one hour (limit one batch per user) so others know you are working on it. Claimed batches remain viewable by everyone. Batch sizes are kept small so you can comfortably finish without hitting e621 rate limits. When you finish, click <span class="text-gray-200 font-semibold">Release</span> so others know that you are done with the batch.</p>
+            </div>
+
+            <!-- P5: Data refresh and background sync -->
+            <div class="space-y-1.5">
+                <h3 class="text-xs font-bold text-gray-200 font-mono">Syncing Progress</h3>
+                <p>All post data automatically updates via periodic background syncs. If you want your recent edits (such as tags, ratings, or relationships) reflected immediately, click the <span class="text-gray-200 font-semibold">Refresh Batch</span> button, or simply release the batch when finished.</p>
+            </div>
+
+            <!-- P6, P7, & P8: Cluster tools, warnings, and blacklist -->
+            <div class="space-y-2">
+                <h3 class="text-xs font-bold text-gray-200 font-mono">Cluster Tools & Blacklist</h3>
+                
+                <!-- P6: Tag cloud and Copy Merged Tags -->
+                <p>Cluster cards show fully expanded tag lists and ratings so you know what you are looking at beforehand. The <span class="text-gray-200 font-semibold">Copy Merged Tags</span> button will copy all tags present in the cluster (except different artist tags). You're encouraged to use this to add more valid tags to posts, but you should make sure they actually are valid before submitting on e621.</p>
+
+                <!-- P7: Discrepancy highlights (yellow boxes) -->
+                <p>Some discrepancies within a cluster are automatically pointed out, like mismatched artist tags or conflicting ratings on identical posts. Review these carefully, as resolving them may require updating tags or filing an alias request. The warning should be automatically cleared once it is resolved.</p>
+
+                <!-- P8: Blacklist functionality -->
+                <p>You can manage your blacklist in the header. It defaults to e621's standard syntax and list, collapsing any clusters containing blacklisted content. Hovering over a <span class="bg-gray-800 text-gray-200 px-1 py-0.5 rounded font-mono text-[10px]">BLACKLISTED</span> badge reveals the exact rule that triggered it.</p>
+            </div>
+
+        </div>
+
+        <div class="flex justify-end pt-2 border-t border-gray-800 shrink-0">
+            <button @click="showInstructionsModal = false"
+                    class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-5 py-2 rounded font-semibold transition">
+                Got It
+            </button>
+        </div>
+    </div>
+</div>

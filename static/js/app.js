@@ -1,8 +1,12 @@
+import Alpine from 'alpinejs';
+
 import { ToastManager } from './toasts.js';
 import { LeaseManager } from './leases.js';
 import { TagManager } from './tags.js';
 import { BatchManager } from './batches.js';
 import { BlacklistManager } from './blacklist.js';
+
+window.Alpine = Alpine;
 
 document.addEventListener('alpine:init', () => {
     Alpine.data('app', () => ({
@@ -52,3 +56,5 @@ document.addEventListener('alpine:init', () => {
         }
     }));
 });
+
+Alpine.start();

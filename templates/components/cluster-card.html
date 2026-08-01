@@ -1,0 +1,47 @@
+<div class="border rounded-lg p-4 transition"
+     :class="cluster.is_resolved ? 'bg-gray-950 border-gray-800 opacity-80' : 'bg-gray-900 border-gray-800'">
+    
+    <!-- Cluster Header Line (Collapsible Trigger) -->
+    <div class="flex flex-wrap items-center justify-between gap-2 cursor-pointer select-none"
+         @click="cluster.collapsed = !cluster.collapsed"
+         :class="cluster.collapsed ? 'mb-0' : 'mb-3 border-b border-gray-800/60 pb-2'">
+        
+        <!-- Left Indicators (Toggle Arrow, Index, Resolution Status & Blacklist Label) -->
+        <div class="flex flex-wrap items-center gap-2">
+            <span class="text-gray-400 hover:text-white transition font-bold text-xs w-4"
+                  x-text="cluster.collapsed ? '►' : '▼'"></span>
+
+            <span class="font-mono text-xs text-gray-500 font-bold" x-text="`Cluster #${cluster.cluster_index}`"></span>
+            
+            <!-- Resolution Status Badge -->
+            <span class="text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider"
+                  :class="cluster.is_resolved ? 'bg-green-950 text-green-400 border border-green-800/50' : 'bg-gray-800 text-gray-400'"
+                  x-text="cluster.is_resolved ? 'RESOLVED' : 'UNRESOLVED'"></span>
+
+            <!-- BLACKLISTED Label Indicator -->
+            <template x-if="cluster.is_blacklisted">
+                <span class="bg-black text-white border border-gray-700 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider shadow-sm"
+                      :title="`Matched Rule: ${cluster.matched_rule}`">
+                    BLACKLISTED
+                </span>
+            </template>
+        </div>
+
+        <!-- Cluster Warning Note (if present) -->
+        <template x-if="cluster.note">
+            <div class="flex items-center space-x-1.5 text-xs font-medium text-amber-300 bg-amber-950/60 border border-amber-800/80 px-3 py-1 rounded-md shadow-sm">
+                <span class="text-amber-400 font-bold">⚠️</span>
+                <span x-text="cluster.note"></span>
+            </div>
+        </template>
+    </div>
+
+    <!-- Posts Grid inside Cluster -->
+    <template x-if="!cluster.collapsed">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+            <template x-for="post in cluster.posts" :key="post.post_id">
+                <load src="/templates/components/post-card.html" />
+            </template>
+        </div>
+    </template>
+</div>

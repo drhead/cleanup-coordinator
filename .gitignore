@@ -40,3 +40,4 @@ data/
 /profile*
 
 /tailwindcss
+node_modules/

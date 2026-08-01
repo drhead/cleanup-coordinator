@@ -44,6 +44,7 @@ app = FastAPI(lifespan=lifespan)
 
 # Static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/components", StaticFiles(directory="templates/components"), name="components")
 
 # Middleware
 @app.middleware("http")

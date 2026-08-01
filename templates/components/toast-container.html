@@ -1,0 +1,17 @@
+<div class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 max-w-sm w-full pointer-events-none">
+    <template x-for="toast in toasts" :key="toast.id">
+        <div class="pointer-events-auto px-4 py-3 rounded-lg border shadow-lg text-xs font-medium flex items-start justify-between space-x-3 transition-all duration-300 transform translate-y-0"
+            :class="{
+                'bg-red-950/90 border-red-800 text-red-200': toast.type === 'error',
+                'bg-green-950/90 border-green-800 text-green-200': toast.type === 'success',
+                'bg-amber-950/90 border-amber-800 text-amber-200': toast.type === 'warning',
+                'bg-blue-950/90 border-blue-800 text-blue-200': toast.type === 'info'
+            }">
+            <div class="flex items-start space-x-2">
+                <span class="font-bold text-sm" x-text="toast.type === 'error' ? '❌' : toast.type === 'success' ? '✓' : '⚠️'"></span>
+                <span x-text="toast.message" class="leading-relaxed"></span>
+            </div>
+            <button @click="removeToast(toast.id)" class="text-gray-400 hover:text-white font-bold text-sm leading-none">&times;</button>
+        </div>
+    </template>
+</div>

@@ -1,0 +1,79 @@
+<div x-show="currentScreen === 'batch_detail'" class="space-y-6">
+    
+    <!-- Detail Header Bar & Action Control Buttons -->
+    <div class="bg-gray-900 border border-gray-800 rounded-lg p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+            <div class="flex flex-wrap items-center gap-2 mb-1">
+                <h2 class="text-2xl font-bold text-gray-100" x-text="`Batch ${activeBatch?.batch_number}`"></h2>
+                <span class="px-2.5 py-0.5 rounded text-xs font-bold"
+                      :class="getBatchStatusClass(activeBatch)"
+                      x-text="getBatchStatusLabel(activeBatch)"></span>
+                
+                <!-- Batch Lease Expiry Tag -->
+                <template x-if="activeBatch?.status === 'CLAIMED' && activeBatch?.leased_until">
+                    <span class="text-xs font-mono text-amber-400 font-bold bg-amber-950/80 border border-amber-800/60 px-2 py-0.5 rounded"
+                          x-text="`Expires in: ${getRemainingTimeString(activeBatch.leased_until)}`"></span>
+                </template>
+            </div>
+            <p class="text-xs text-gray-400" 
+               x-text="`Progress: ${activeBatch?.resolved_count} of ${activeBatch?.total_clusters} clusters resolved`"></p>
+        </div>
+
+        <!-- Action Button Controls Container -->
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+
+            <!-- Back to Explorer Navigation Button -->
+            <button class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs px-4 py-2 rounded font-medium border border-gray-700 transition text-center"
+                    @click="currentScreen = 'batches'">
+                &larr; Back to Explorer
+            </button>
+
+            <!-- Batch Refresh Data Button -->
+            <button @click="refreshBatch(activeBatch)"
+                    :disabled="Boolean(activeBatch?.isRefreshing)"
+                    class="bg-blue-950/40 hover:bg-blue-900/60 text-blue-400 hover:text-blue-300 text-xs px-4 py-2 rounded font-semibold border border-blue-800/60 transition flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
+                <template x-if="activeBatch?.isRefreshing">
+                    <span class="animate-spin">↻</span>
+                </template>
+                <span x-text="activeBatch?.isRefreshing ? 'Refreshing Batch...' : 'Refresh Batch'"></span>
+            </button>
+
+            <!-- Claim / Revoke Action State Buttons -->
+            <template x-if="activeBatch?.status === 'CLAIMED' && activeBatch?.is_leased_by_you">
+                <button class="bg-amber-600 hover:bg-amber-500 text-white text-xs px-4 py-2 rounded font-semibold transition text-center"
+                        @click="revokeLease(activeBatch.batch_id)">
+                    Release Batch
+                </button>
+            </template>
+
+            <template x-if="activeBatch?.status === 'AVAILABLE'">
+                <button class="text-xs px-4 py-2 rounded font-semibold transition text-center"
+                        :class="canClaimActiveBatch() ? 'bg-blue-600 hover:bg-blue-500 text-white cursor-pointer' : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'"
+                        :disabled="!canClaimActiveBatch()"
+                        @click="claimCurrentBatch()"
+                        x-text="activeLease ? 'Active Lease Exists Elsewhere' : 'Claim Batch'">
+                </button>
+            </template>
+
+            <template x-if="activeBatch?.status === 'CLAIMED' && !activeBatch?.is_leased_by_you">
+                <button disabled class="bg-gray-800 text-gray-500 text-xs px-4 py-2 rounded font-semibold border border-gray-700 cursor-not-allowed text-center">
+                    Claimed by Another User
+                </button>
+            </template>
+        </div>
+    </div>
+
+    <!-- Project-Specific Instructions Box -->
+    <div class="bg-blue-950/30 border border-blue-800/40 rounded-lg p-4 text-xs text-blue-200/90 leading-relaxed space-y-2">
+        <h4 class="font-bold text-blue-300 uppercase tracking-wider text-[11px]">Project Instructions</h4>
+        <div x-html="activeProject?.instructions_html"></div>
+    </div>
+
+    <!-- Batch Clusters List Container -->
+    <div class="space-y-4">
+        <template x-for="cluster in activeBatch?.clusters" :key="cluster.cluster_id">
+            <load src="/templates/components/cluster-card.html" />
+        </template>
+    </div>
+
+</div>
