@@ -1,0 +1,33 @@
+<div x-show="!isAgeVerified"
+     x-cloak
+     class="fixed inset-0 z-9999 w-screen h-screen flex items-center justify-center bg-black p-4 select-none">
+    
+    <!-- Outer Card -->
+    <div class="bg-red-900/90 border border-red-800/80 rounded-xl w-full max-w-100 p-6 shadow-2xl space-y-5 text-center">
+         
+        <!-- Inner Box: Dark Red Background & Larger Text -->
+        <div class="text-sm text-gray-200 space-y-4 leading-relaxed text-left bg-red-950/90 p-6 rounded-lg border border-red-800/60">
+            <p>
+                This application links directly to adult and mature content hosted on third-party services. If provided with API credentials, this application may retrieve, render, and display explicit material.
+            </p>
+            <p class="font-semibold text-white">
+                If you are under 18 years of age (or the legal age of majority in your jurisdiction), you must leave now.
+            </p>
+            <p class="text-gray-300">
+                By clicking <span class="font-semibold">"I am 18 or Older"</span>, you acknowledge that you are at least 18 years of age and consent to viewing potentially mature content.
+            </p>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex items-center gap-4 pt-1">
+            <button @click="window.location.href = 'https://www.google.com'"
+                    class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 py-3 px-5 rounded-lg font-semibold text-base transition">
+                Leave
+            </button>
+            <button @click="confirmAge()"
+                    class="flex-1 bg-red-700 hover:bg-red-600 text-white font-semibold py-3 px-5 rounded-lg text-base transition shadow-lg shadow-red-950/50">
+                I am 18 or Older
+            </button>
+        </div>
+    </div>
+</div>

@@ -7,7 +7,7 @@
     <title>E621 Cleanup Coordinator</title>
     
     <!-- Static Assets -->
-    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/input.css">
     <script type="module" src="/static/js/app.js"></script>
     
     <!-- Alpine Cloak Utility -->
@@ -17,95 +17,102 @@
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen font-sans" x-data="app" x-init="init()" x-cloak>
 
-    <!-- Top Navigation Header -->
-    <header class="bg-gray-900 border-b border-gray-800 px-3 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-50">
-        
-        <!-- Left Side: App Brand Title & Dynamic Breadcrumb Navigation -->
-        <div class="flex items-center space-x-3 flex-wrap gap-y-1">
-            <h1 class="text-lg font-bold text-blue-400 cursor-pointer hover:text-blue-300 transition" 
-                @click="currentScreen = 'projects'; activeProject = null; activeBatch = null;">
-                E621 Cleanup Coordinator
-            </h1>
-            
-            <!-- Breadcrumbs Container -->
-            <template x-if="activeProject">
-                <div class="flex items-center space-x-2 text-sm text-gray-400 flex-wrap">
-                    <span>/</span>
-                    <button class="hover:text-white transition" @click="currentScreen = 'batches'" x-text="activeProject.title"></button>
+    <!-- 18+ Age Gate Interstitial -->
+    <load src="/templates/components/age-modal.html" />
+
+    <template x-if="isAgeVerified">
+        <div>
+            <!-- Top Navigation Header -->
+            <header class="bg-gray-900 border-b border-gray-800 px-3 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-50">
+                
+                <!-- Left Side: App Brand Title & Dynamic Breadcrumb Navigation -->
+                <div class="flex items-center space-x-3 flex-wrap gap-y-1">
+                    <h1 class="text-lg font-bold text-blue-400 cursor-pointer hover:text-blue-300 transition" 
+                        @click="currentScreen = 'projects'; activeProject = null; activeBatch = null;">
+                        E621 Cleanup Coordinator
+                    </h1>
                     
-                    <template x-if="activeBatch">
-                        <div class="flex items-center space-x-2">
+                    <!-- Breadcrumbs Container -->
+                    <template x-if="activeProject">
+                        <div class="flex items-center space-x-2 text-sm text-gray-400 flex-wrap">
                             <span>/</span>
-                            <span class="text-gray-200 font-mono" x-text="`Batch ${activeBatch.batch_number}`"></span>
+                            <button class="hover:text-white transition" @click="currentScreen = 'batches'" x-text="activeProject.title"></button>
+                            
+                            <template x-if="activeBatch">
+                                <div class="flex items-center space-x-2">
+                                    <span>/</span>
+                                    <span class="text-gray-200 font-mono" x-text="`Batch ${activeBatch.batch_number}`"></span>
+                                </div>
+                            </template>
                         </div>
                     </template>
                 </div>
-            </template>
-        </div>
 
-        <!-- Right Side: Modal Triggers & Active Lease Indicator -->
-        <div class="flex items-center space-x-2 sm:space-x-3 text-xs font-mono flex-wrap gap-y-2">
-            
-            <!-- Instructions Modal Trigger -->
-            <button @click="showInstructionsModal = true" 
-                    class="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 px-3 py-1.5 rounded-md font-sans font-semibold flex items-center space-x-1.5 transition">
-                <span>ℹ️</span>
-                <span>Instructions</span>
-            </button>
-            
-            <!-- Blacklist Settings Modal Trigger -->
-            <button @click="showBlacklistModal = true" 
-                    class="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 px-3 py-1.5 rounded-md font-sans font-semibold flex items-center space-x-1.5 transition">
-                <span>🚫</span>
-                <span>Blacklist</span>
-            </button>
-
-            <!-- Active Lease Badge (Claimed State) -->
-            <template x-if="activeLease">
-                <div class="flex items-center space-x-2 bg-amber-950/60 border border-amber-800/60 px-3 py-1.5 rounded-md flex-wrap">
-                    <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-                    <span class="text-amber-200">Claimed:</span>
-                    <button class="text-amber-300 font-bold hover:underline"
-                            @click="jumpToLeasedBatch(activeLease)"
-                            x-text="`Batch #${activeLease.batch_number}`"></button>
-                    <span class="text-amber-400 font-semibold" x-text="`(${getRemainingTimeString(activeLease.leased_until)})`"></span>
-                    <button class="ml-2 bg-amber-900/80 hover:bg-amber-800 text-amber-200 px-2 py-0.5 rounded text-[10px] font-sans font-semibold transition"
-                            @click="revokeLease(activeLease.batch_id)">
-                        Release
+                <!-- Right Side: Modal Triggers & Active Lease Indicator -->
+                <div class="flex items-center space-x-2 sm:space-x-3 text-xs font-mono flex-wrap gap-y-2">
+                    
+                    <!-- Instructions Modal Trigger -->
+                    <button @click="showInstructionsModal = true" 
+                            class="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 px-3 py-1.5 rounded-md font-sans font-semibold flex items-center space-x-1.5 transition">
+                        <span>ℹ️</span>
+                        <span>Instructions</span>
                     </button>
+                    
+                    <!-- Blacklist Settings Modal Trigger -->
+                    <button @click="showBlacklistModal = true" 
+                            class="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 px-3 py-1.5 rounded-md font-sans font-semibold flex items-center space-x-1.5 transition">
+                        <span>🚫</span>
+                        <span>Blacklist</span>
+                    </button>
+
+                    <!-- Active Lease Badge (Claimed State) -->
+                    <template x-if="activeLease">
+                        <div class="flex items-center space-x-2 bg-amber-950/60 border border-amber-800/60 px-3 py-1.5 rounded-md flex-wrap">
+                            <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                            <span class="text-amber-200">Claimed:</span>
+                            <button class="text-amber-300 font-bold hover:underline"
+                                    @click="jumpToLeasedBatch(activeLease)"
+                                    x-text="`Batch #${activeLease.batch_number}`"></button>
+                            <span class="text-amber-400 font-semibold" x-text="`(${getRemainingTimeString(activeLease.leased_until)})`"></span>
+                            <button class="ml-2 bg-amber-900/80 hover:bg-amber-800 text-amber-200 px-2 py-0.5 rounded text-[10px] font-sans font-semibold transition"
+                                    @click="revokeLease(activeLease.batch_id)">
+                                Release
+                            </button>
+                        </div>
+                    </template>
+                    
+                    <!-- Active Lease Badge (Unclaimed State) -->
+                    <template x-if="!activeLease">
+                        <div class="text-gray-500 bg-gray-950/60 border border-gray-800 px-3 py-1.5 rounded-md">
+                            No batch claimed
+                        </div>
+                    </template>
                 </div>
-            </template>
-            
-            <!-- Active Lease Badge (Unclaimed State) -->
-            <template x-if="!activeLease">
-                <div class="text-gray-500 bg-gray-950/60 border border-gray-800 px-3 py-1.5 rounded-md">
-                    No batch claimed
-                </div>
-            </template>
+            </header>
+
+            <!-- Main Content Container -->
+            <main class="max-w-7xl mx-auto p-6">
+
+                <!-- SCREEN 1: PROJECT SELECTION -->
+                <load src="/templates/components/screen-projects.html" />
+
+                <!-- SCREEN 2: BATCH EXPLORER -->
+                <load src="/templates/components/screen-batches.html" />
+
+                <!-- SCREEN 3: BATCH DETAIL VIEW -->
+                <load src="/templates/components/screen-batch-detail.html" />
+
+            </main>
+
+            <!-- General Instructions Modal -->
+            <load src="/templates/components/instructions-modal.html" />
+
+            <!-- Blacklist Editor Modal -->
+            <load src="/templates/components/blacklist-modal.html" />
+
+            <!-- Toast Notifications Container -->
+            <load src="/templates/components/toast-container.html" />
         </div>
-    </header>
-
-    <!-- Main Content Container -->
-    <main class="max-w-7xl mx-auto p-6">
-
-        <!-- SCREEN 1: PROJECT SELECTION -->
-        <load src="/templates/components/screen-projects.html" />
-
-        <!-- SCREEN 2: BATCH EXPLORER -->
-        <load src="/templates/components/screen-batches.html" />
-
-        <!-- SCREEN 3: BATCH DETAIL VIEW -->
-        <load src="/templates/components/screen-batch-detail.html" />
-
-    </main>
-
-    <!-- General Instructions Modal -->
-    <load src="/templates/components/instructions-modal.html" />
-
-    <!-- Blacklist Editor Modal -->
-    <load src="/templates/components/blacklist-modal.html" />
-
-    <!-- Toast Notifications Container -->
-    <load src="/templates/components/toast-container.html" />
+    </template>
 </body>
 </html>

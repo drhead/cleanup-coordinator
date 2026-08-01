@@ -24,6 +24,7 @@ document.addEventListener('alpine:init', () => {
         blacklistText: localStorage.getItem('e621_blacklist') || 
             '# Violence\ngore\nsnuff\nrape\n\n# ABDL\nyoung -rating:s\ndiaper -rating:s\n\n# Fetish\nfeces\nurine\nfart_fetish\nrealistic_feral rating:e\n\n# Controversial\npolitics',
         hoveredMergedData: { clusterId: null, targetPostId: null, tags: [] },
+        isAgeVerified: !!localStorage.getItem('e621_age_verified'),
 
         // Module Mixins
         ...ToastManager,
@@ -32,8 +33,20 @@ document.addEventListener('alpine:init', () => {
         ...BatchManager,
         ...BlacklistManager,
 
-        // Core App Lifecycle Methods
         init() {
+            if (!this.isAgeVerified) {
+                return;
+            }
+            this.loadAppData();
+        },
+
+        confirmAge() {
+            localStorage.setItem('e621_age_verified', 'true');
+            this.isAgeVerified = true;
+            this.loadAppData();
+        },
+
+        loadAppData() {
             fetch('/api/v1/projects')
                 .then(res => res.json())
                 .then(data => {
@@ -42,11 +55,13 @@ document.addEventListener('alpine:init', () => {
                         this.selectProject(this.projects[0].project_id);
                     }
                 });
+
             const hasSeenInstructions = localStorage.getItem('hasSeenInstructions');
             if (!hasSeenInstructions) {
                 this.showInstructionsModal = true;
                 localStorage.setItem('hasSeenInstructions', 'true');
             }
+
             setInterval(() => {
                 this.nowTimestamp = Date.now();
                 this.checkLocalLeaseExpiration();
