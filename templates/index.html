@@ -6,8 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>E621 Cleanup Coordinator</title>
     
-    <!-- Third-Party Assets (Tailwind CSS & Alpine.js) -->
+    <!-- Static Assets -->
     <link rel="stylesheet" href="/static/css/main.css">
+    <script type="module" src="/static/js/app.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     
     <!-- Alpine Cloak Utility -->
@@ -15,7 +16,7 @@
         [x-cloak] { display: none !important; }
     </style>
 </head>
-<body class="bg-gray-950 text-gray-100 min-h-screen font-sans" x-data="app()" x-init="init()" x-cloak>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-sans" x-data="app" x-init="init()" x-cloak>
 
     <!-- Top Navigation Header -->
     <header class="bg-gray-900 border-b border-gray-800 px-3 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-50">
@@ -612,7 +613,5 @@
             </div>
         </template>
     </div>
-    <script type="module" src="/static/js/blacklist.js"></script>
-    <script src="/static/js/app.js"></script>
 </body>
 </html>
