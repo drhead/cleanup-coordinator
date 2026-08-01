@@ -6,6 +6,7 @@ import { TagManager } from './tags.js';
 import { BatchManager } from './batches.js';
 import { BlacklistManager } from './blacklist.js';
 import { AuthManager } from './auth.js';
+import { ComparisonManager } from './comparison.js';
 
 window.Alpine = Alpine;
 
@@ -34,6 +35,7 @@ document.addEventListener('alpine:init', () => {
         ...BatchManager,
         ...BlacklistManager,
         ...AuthManager,
+        ...ComparisonManager,
 
         init() {
             if (!this.isAgeVerified) {

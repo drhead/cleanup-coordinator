@@ -6,7 +6,7 @@
          @click="cluster.collapsed = !cluster.collapsed"
          :class="cluster.collapsed ? 'mb-0' : 'mb-3 border-b border-gray-800/60 pb-2'">
         
-        <!-- Left Indicators (Toggle Arrow, Index, Resolution Status & Blacklist Label) -->
+        <!-- Left Indicators -->
         <div class="flex flex-wrap items-center gap-2">
             <span class="text-gray-400 hover:text-white transition font-bold text-xs w-4"
                   x-text="cluster.collapsed ? '►' : '▼'"></span>
@@ -35,6 +35,11 @@
             </div>
         </template>
     </div>
+
+    <!-- Embedded Comparison UI -->
+    <template x-if="!cluster.collapsed">
+        <load src="/templates/components/cluster-comparison.html" />
+    </template>
 
     <!-- Posts Grid inside Cluster -->
     <template x-if="!cluster.collapsed">
