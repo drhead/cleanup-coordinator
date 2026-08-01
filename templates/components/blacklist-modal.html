@@ -23,10 +23,22 @@
         </div>
 
         <div class="flex items-center justify-between pt-2 border-t border-gray-800 shrink-0">
-            <button @click="saveBlacklist()"
-                    class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-5 py-2 rounded font-semibold transition">
-                Save
-            </button>
+            <div class="flex items-center gap-2">
+                <button @click="saveBlacklist()"
+                        class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-5 py-2 rounded font-semibold transition">
+                    Save
+                </button>
+                
+                <template x-if="e621User">
+                    <button @click="importBlacklist()"
+                            :disabled="isImportingBlacklist"
+                            class="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs px-4 py-2 rounded font-semibold transition">
+                        <span x-show="!isImportingBlacklist">Import from e621</span>
+                        <span x-show="isImportingBlacklist">Fetching...</span>
+                    </button>
+                </template>
+            </div>
+
             <button @click="showBlacklistModal = false"
                     class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs px-4 py-2 rounded font-medium transition">
                 Cancel

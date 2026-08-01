@@ -211,7 +211,10 @@ export function applyBlacklistToCluster(cluster, evaluator) {
 }
 
 export const BlacklistManager = {
-    async saveBlacklist() {
+    blacklistText: localStorage.getItem('e621_blacklist') || '',
+    isImportingBlacklist: false,
+
+    async saveBlacklist(silent = false) {
         localStorage.setItem('e621_blacklist', this.blacklistText);
         this.showBlacklistModal = false;
 
@@ -224,6 +227,50 @@ export const BlacklistManager = {
             }
         }
 
-        this.showToast('Blacklist updated.', 'success');
+        if (!silent && this.showToast) {
+            this.showToast('Blacklist updated.', 'success');
+        }
+    },
+
+    async importBlacklist() {
+        if (!this.e621User) return;
+        
+        this.isImportingBlacklist = true;
+        
+        try {
+            const authString = btoa(`${this.e621User.username}:${this.e621User.apiKey}`);
+            const appAuthor = import.meta.env.VITE_E621_APP_AUTHOR || 'anonymous';
+            
+            // Fetch the authenticated user's profile which contains their blacklist
+            const res = await fetch(`https://e621.net/users/${this.e621User.id}.json`, {
+                headers: {
+                    'Authorization': `Basic ${authString}`,
+                    'User-Agent': `E621CleanupCoordinator/1.0 (by ${appAuthor})`
+                }
+            });
+
+            if (!res.ok) {
+                throw new Error(`e621 returned status ${res.status}`);
+            }
+            
+            const userData = await res.json();
+            
+            if (userData.blacklisted_tags !== undefined) {
+                this.blacklistText = userData.blacklisted_tags;
+                await this.saveBlacklist(true);
+                if (this.showToast) {
+                    this.showToast('Blacklist imported and saved successfully', 'success');
+                }
+            } else {
+                throw new Error('Could not locate blacklisted tags in profile.');
+            }
+        } catch (err) {
+            console.error('Blacklist import error:', err);
+            if (this.showToast) {
+                this.showToast(`Import failed: ${err.message}`, 'error');
+            }
+        } finally {
+            this.isImportingBlacklist = false;
+        }
     }
 };

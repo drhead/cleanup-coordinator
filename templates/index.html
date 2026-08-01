@@ -58,6 +58,13 @@
                         <span>Instructions</span>
                     </button>
 
+                    <!-- Blacklist Settings Modal Trigger -->
+                    <button @click="showBlacklistModal = true" 
+                            class="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 px-3 py-1.5 rounded-md font-sans font-semibold flex items-center space-x-1.5 transition">
+                        <span>🚫</span>
+                        <span>Blacklist</span>
+                    </button>
+
                     <!-- Login / Account State -->
                     <div class="flex items-center">
                         <template x-if="!e621User">
@@ -78,13 +85,6 @@
                             </div>
                         </template>
                     </div>
-
-                    <!-- Blacklist Settings Modal Trigger -->
-                    <button @click="showBlacklistModal = true" 
-                            class="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 px-3 py-1.5 rounded-md font-sans font-semibold flex items-center space-x-1.5 transition">
-                        <span>🚫</span>
-                        <span>Blacklist</span>
-                    </button>
 
                     <!-- Active Lease Badge (Claimed State) -->
                     <template x-if="activeLease">
