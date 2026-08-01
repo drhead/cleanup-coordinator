@@ -129,7 +129,7 @@ async def get_project_batches(
             LEFT JOIN cluster_posts cp ON c.cluster_id = cp.cluster_id
             LEFT JOIN immv_post_flag_counts fc ON cp.post_id = fc.post_id
             WHERE b.project_id = $1
-            ORDER BY c.batch_id ASC, c.cluster_index ASC
+            ORDER BY c.batch_id ASC, c.cluster_index ASC, cp.post_id ASC
             """,
             project_id,
         )
