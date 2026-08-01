@@ -57,7 +57,28 @@
                         <span>ℹ️</span>
                         <span>Instructions</span>
                     </button>
-                    
+
+                    <!-- Login / Account State -->
+                    <div class="flex items-center">
+                        <template x-if="!e621User">
+                            <button @click="openLoginModal()"
+                                    class="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 px-3 py-1.5 rounded-md font-sans font-semibold flex items-center space-x-1.5 transition text-xs">
+                                <span>🔑</span>
+                                <span>Login</span>
+                            </button>
+                        </template>
+
+                        <template x-if="e621User">
+                            <div class="flex items-center space-x-2 bg-gray-950/60 border border-gray-800 px-3 py-1.5 rounded-md text-xs">
+                                <span class="text-gray-400">Logged in as</span>
+                                <span class="text-blue-400 font-semibold" x-text="e621User.username"></span>
+                                <button @click="logout()" 
+                                        title="Logout"
+                                        class="text-gray-500 hover:text-red-400 font-bold ml-1 transition">&times;</button>
+                            </div>
+                        </template>
+                    </div>
+
                     <!-- Blacklist Settings Modal Trigger -->
                     <button @click="showBlacklistModal = true" 
                             class="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 px-3 py-1.5 rounded-md font-sans font-semibold flex items-center space-x-1.5 transition">
@@ -109,6 +130,9 @@
 
             <!-- Blacklist Editor Modal -->
             <load src="/templates/components/blacklist-modal.html" />
+
+            <!-- Login Modal -->
+            <load src="/templates/components/login-modal.html" />
 
             <!-- Toast Notifications Container -->
             <load src="/templates/components/toast-container.html" />
