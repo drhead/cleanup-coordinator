@@ -1,5 +1,6 @@
 import { decode } from '@msgpack/msgpack';
 import { E621BlacklistEvaluator, applyBlacklistToCluster } from './blacklist.js';
+import { TagManager } from './tags.js';
 
 export const BatchManager = {
     selectProject(projectId) {
@@ -85,10 +86,21 @@ export const BatchManager = {
                                 existingCluster.is_resolved = newCluster.is_resolved;
                                 existingCluster.manual_resolution = newCluster.manual_resolution;
 
-                                if (refreshedClusterId === existingCluster.cluster_id || 
-                                    existingCluster.posts.length !== newCluster.posts.length ||
-                                    JSON.stringify(existingCluster.posts) !== JSON.stringify(newCluster.posts)) {
+                                // Reconcile posts in-place to retain object identity & TagManager cache
+                                if (refreshedClusterId === existingCluster.cluster_id) {
                                     existingCluster.posts = newCluster.posts;
+                                } else if (newCluster.posts && Array.isArray(newCluster.posts)) {
+                                    const existingPostsMap = new Map((existingCluster.posts || []).map(p => [p.post_id, p]));
+                                    
+                                    existingCluster.posts = newCluster.posts.map(newPost => {
+                                        const existingPost = existingPostsMap.get(newPost.post_id);
+                                        if (existingPost) {
+                                            // Updates properties while preserving existingPost._tagsSignature & existingPost._sortedTags
+                                            Object.assign(existingPost, newPost);
+                                            return existingPost;
+                                        }
+                                        return newPost;
+                                    });
                                 }
 
                                 processCluster(existingCluster, forceCollapseReset);

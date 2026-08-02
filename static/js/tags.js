@@ -2,15 +2,6 @@ import { decode } from '@msgpack/msgpack';
 
 export const TagManager = {
     implications: {},
-    hoveredImplicationData: {
-        postId: null,
-        tagName: null,
-        directImplicators: [],
-        indirectImplicators: [],
-        directImplied: [],
-        indirectImplied: []
-    },
-    hoveredMergedData: { clusterId: null, targetPostId: null, tags: [] },
 
     async initTags() {
         try {
@@ -20,6 +11,7 @@ export const TagManager = {
             if (!res.ok) return;
             const buffer = await res.arrayBuffer();
             this.implications = decode(buffer) || {};
+            this.hasImplications = true;
         } catch (err) {
             console.error('[TagManager] Failed to load tag implications:', err);
         }
@@ -28,16 +20,19 @@ export const TagManager = {
     getSortedTags(tagsJson, post = null) {
         if (!tagsJson || typeof tagsJson !== 'object') return [];
 
-        // 1. Flatten incoming tags to compute a fast structural signature
-        const allTags = Object.values(tagsJson).flat().sort();
-        const currentSignature = allTags.join(',');
+        // 1. Create a lightweight signature of the current tag content
+        // Format: "ARTIST:tag1,tag2|GENERAL:tag3,tag4"
+        const currentSignature = Object.keys(tagsJson)
+            .sort()
+            .map(cat => `${cat}:${(tagsJson[cat] || []).join(',')}`)
+            .join('|');
 
-        // 2. Return cached array if post object exists and tag signature matches
-        if (post && post._tagSignature === currentSignature && post._sortedTags) {
+        // 2. Content-based cache hit check
+        if (post && post._tagsSignature === currentSignature && post._sortedTags) {
             return post._sortedTags;
         }
 
-        // 3. Re-compute sorting logic
+        // 3. Re-compute sorting ONLY when tag contents actually differ
         const categoryOrder = ['ARTIST', 'CONTRIBUTOR', 'COPYRIGHT', 'CHARACTER', 'SPECIES', 'GENERAL', 'META', 'LORE', 'INVALID'];
         
         const keys = Object.keys(tagsJson).sort((a, b) => {
@@ -52,6 +47,7 @@ export const TagManager = {
         for (const key of keys) {
             const tags = tagsJson[key] || [];
             const sortedCategoryTags = this.sortCategoryTags(tags);
+
             for (const tag of sortedCategoryTags) {
                 result.push({
                     name: tag,
@@ -60,10 +56,10 @@ export const TagManager = {
             }
         }
 
-        // 4. Store cache and signature on the post object if provided
+        // 4. Cache the result along with the content signature
         if (post) {
             post._sortedTags = result;
-            post._tagSignature = currentSignature;
+            post._tagsSignature = currentSignature;
         }
 
         return result;
@@ -71,12 +67,10 @@ export const TagManager = {
 
     /**
      * Sorts tags within a category using DAG topological depth levels.
-     * Level 0: Tags that imply others (most specific) or standalone tags.
-     * Level N: Tags implied by Level N-1 tags.
      */
     sortCategoryTags(tags) {
         if (!tags || tags.length <= 1) return tags ? tags.slice() : [];
-        if (!this.implications || Object.keys(this.implications).length === 0) {
+        if (!this.hasImplications) {
             return tags.slice().sort((a, b) => a.localeCompare(b));
         }
 
@@ -133,7 +127,6 @@ export const TagManager = {
 
         // 3. Process each component DAG
         const processedComponents = components.map(comp => {
-            // Forward depth calculation via longest path
             const forwardDepth = {};
             const compInDegree = {};
             for (const t of comp) {
@@ -155,7 +148,6 @@ export const TagManager = {
                 }
             }
 
-            // Assign levels (leaf vs non-leaf)
             const level = {};
             for (const t of comp) {
                 if (inDegree[t] > 0) {
@@ -171,14 +163,12 @@ export const TagManager = {
                 }
             }
 
-            // Group tags into level buckets
             const maxLevel = Math.max(...comp.map(t => level[t]));
             const levelBuckets = Array.from({ length: maxLevel + 1 }, () => []);
             for (const t of comp) {
                 levelBuckets[level[t]].push(t);
             }
 
-            // Sort Level 0 (Leaves sorted alphabetically)
             const level0Leaves = levelBuckets[0].filter(t => inDegree[t] === 0).sort((a, b) => a.localeCompare(b));
             const level0NonLeaves = levelBuckets[0].filter(t => inDegree[t] > 0).sort((a, b) => a.localeCompare(b));
 
@@ -186,13 +176,11 @@ export const TagManager = {
             const posMap = new Map();
             orderedComp.forEach((t, idx) => posMap.set(t, idx));
 
-            // Sort Levels 1 through maxLevel
             for (let k = 1; k <= maxLevel; k++) {
                 const bucket = levelBuckets[k];
                 const regularTags = bucket.filter(t => inDegree[t] > 0);
                 const shiftedLeaves = bucket.filter(t => inDegree[t] === 0);
 
-                // Regular tags sort by implicator position first, then alphabetically
                 regularTags.sort((a, b) => {
                     const parentsA = revAdj[a] || [];
                     const parentsB = revAdj[b] || [];
@@ -206,7 +194,6 @@ export const TagManager = {
                     return a.localeCompare(b);
                 });
 
-                // Shifted leaf tags placed at the end of the level, sorted alphabetically
                 shiftedLeaves.sort((a, b) => a.localeCompare(b));
 
                 const combinedLevel = [...regularTags, ...shiftedLeaves];
@@ -216,7 +203,6 @@ export const TagManager = {
                 }
             }
 
-            // Primary leaf for component sorting
             const compLeaves = sources.length > 0 ? sources : comp;
             const primaryLeaf = compLeaves.slice().sort((a, b) => a.localeCompare(b))[0];
 
@@ -226,7 +212,6 @@ export const TagManager = {
             };
         });
 
-        // Sort graphs/components by primary leaf tag name
         processedComponents.sort((a, b) => a.primaryLeaf.localeCompare(b.primaryLeaf));
 
         return processedComponents.flatMap(c => c.tags);
@@ -241,8 +226,12 @@ export const TagManager = {
         return implData.implied_by.some(implicator => allPostTags.has(implicator));
     },
 
-    setHoveredTag(postId, tagName, tagsCategorized) {
-        if (!this.implications || !tagName || !tagsCategorized) return;
+    /**
+     * Pure function calculating tag implication chains.
+     * Implicators & implied lists are stored as Set objects for O(1) template lookup.
+     */
+    getImplicationChain(postId, tagName, tagsCategorized) {
+        if (!this.implications || !tagName || !tagsCategorized) return null;
 
         const allPostTags = new Set(Object.values(tagsCategorized).flat());
 
@@ -284,24 +273,13 @@ export const TagManager = {
             }
         }
 
-        this.hoveredImplicationData = {
+        return {
             postId,
             tagName,
-            directImplicators,
-            indirectImplicators,
-            directImplied,
-            indirectImplied
-        };
-    },
-
-    clearHoveredTag() {
-        this.hoveredImplicationData = {
-            postId: null,
-            tagName: null,
-            directImplicators: [],
-            indirectImplicators: [],
-            directImplied: [],
-            indirectImplied: []
+            directImplicators: new Set(directImplicators),
+            indirectImplicators: new Set(indirectImplicators),
+            directImplied: new Set(directImplied),
+            indirectImplied: new Set(indirectImplied)
         };
     },
 
@@ -309,23 +287,23 @@ export const TagManager = {
         const cat = (category || '').toUpperCase();
         switch (cat) {
             case 'ARTIST':
-                return 'color: #f2ac08;';
+                return 'color: #f2ac08; font-weight: bold;';
             case 'COPYRIGHT':
-                return 'color: #d0d;';
+                return 'color: #d0d; font-weight: bold;';
             case 'CHARACTER':
-                return 'color: #0a0;';
+                return 'color: #0a0; font-weight: bold;';
             case 'CONTRIBUTOR':
-                return 'color: silver';
+                return 'color: silver; font-weight: bold;';
             case 'SPECIES':
-                return 'color: #ed5d1f;';
+                return 'color: #ed5d1f; font-weight: bold;';
             case 'GENERAL':
-                return 'color: #b4c7d9;';
+                return 'color: #b4c7d9; font-weight: normal;';
             case 'META':
-                return 'color: #e0e0e0;';
+                return 'color: #e0e0e0; font-weight: normal;';
             case 'LORE':
-                return 'color: #282';
+                return 'color: #282; font-weight: bold;';
             default:
-                return 'color: #ff3d3d;';
+                return 'color: #ff3d3d; font-weight: bold;';
         }
     },
 
@@ -400,21 +378,21 @@ export const TagManager = {
         return mergedCount - currentCount;
     },
 
-    setHoveredMergedTags(clusterId, targetPost, clusterPosts) {
+    /**
+     * Returns merged tag hover state object targeting the cluster scope.
+     * Uses Set for fast O(1) checks in template.
+     */
+    getMergedHoverData(targetPost, clusterPosts) {
         const targetTags = new Set(
             Object.values(targetPost.tags_categorized || {}).flat()
         );
 
         const mergedList = Array.from(this.calculateMergedTags(targetPost, clusterPosts) || []);
+        const newTags = mergedList.filter(tag => !targetTags.has(tag));
 
-        this.hoveredMergedData = {
-            clusterId: clusterId,
+        return {
             targetPostId: targetPost.post_id,
-            tags: mergedList.filter(tag => !targetTags.has(tag))
+            tags: new Set(newTags)
         };
-    },
-
-    clearHoveredMergedTags() {
-        this.hoveredMergedData = { clusterId: null, targetPostId: null, tags: [] };
     }
 };
