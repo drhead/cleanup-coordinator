@@ -34,16 +34,34 @@ export function ReconciliationManager(cluster) {
             return cluster.posts.find(p => p.post_id === postId || p.id === postId) || null;
         },
 
+        getEffectiveLhsRating() {
+            if (this.activeRating) return this.activeRating;
+            return this.lhsPost?.rating || this.lhsPost?.rating_letter || null;
+        },
+
+        getPostById(postId) {
+            if (!postId) return null;
+            return this.fetchedPostsMap.get(postId) || this.getLocalClusterPost(postId);
+        },
+
+        // Keeps selected post on the left (index 0); unselected graph uses default order
+        get orderedPostIds() {
+            if (!this.currentGraph) return [];
+            if (!this.lhsPostId) return this.currentGraph.postIds;
+            const remaining = this.currentGraph.postIds.filter(id => id !== this.lhsPostId);
+            return [this.lhsPostId, ...remaining];
+        },
+
         get lhsPost() {
             if (!this.currentGraph || !this.lhsPostId) return null;
-            return this.fetchedPostsMap.get(this.lhsPostId) || this.getLocalClusterPost(this.lhsPostId);
+            return this.getPostById(this.lhsPostId);
         },
 
         get rhsPosts() {
-            if (!this.currentGraph || !this.lhsPost) return [];
+            if (!this.currentGraph || !this.lhsPostId) return [];
             return this.currentGraph.postIds
                 .filter(id => id !== this.lhsPostId)
-                .map(id => this.fetchedPostsMap.get(id) || this.getLocalClusterPost(id))
+                .map(id => this.getPostById(id))
                 .filter(Boolean);
         },
 
@@ -55,7 +73,7 @@ export function ReconciliationManager(cluster) {
             if (!this.currentGraph || this.currentGraph.type !== 'duplicate') return false;
             
             const graphPosts = this.currentGraph.postIds
-                .map(id => this.fetchedPostsMap.get(id) || this.getLocalClusterPost(id))
+                .map(id => this.getPostById(id))
                 .filter(Boolean);
             
             const initialRatings = graphPosts.map(p => p.rating || p.rating_letter);
@@ -86,8 +104,18 @@ export function ReconciliationManager(cluster) {
 
         getImplicationChain(postId, tagName, target) {
             const targetId = postId || (target && typeof target === 'object' && (target.post_id || target.id) ? (target.post_id || target.id) : null);
-            const localPost = targetId ? this.getLocalClusterPost(targetId) : null;
-            const tags = localPost?.tags_categorized || (target && typeof target === 'object' && !target.post_id && !target.id ? target : this.lhsTagsCategorized);
+            
+            let tags;
+            if (targetId && targetId === this.lhsPostId) {
+                // Force dynamic LHS tags state (includes added & removed tags)
+                tags = this.lhsTagsCategorized;
+            } else if (target && typeof target === 'object' && (target.GENERAL || target.ARTIST || target.COPYRIGHT || target.SPECIES || target.META)) {
+                tags = target;
+            } else {
+                const localPost = targetId ? this.getLocalClusterPost(targetId) : null;
+                tags = localPost?.tags_categorized || {};
+            }
+
             return TagManager.getImplicationChain(targetId, tagName, tags);
         },
 
@@ -216,17 +244,32 @@ export function ReconciliationManager(cluster) {
             this.selectedSuperiorId = null;
             this.selectedParentId = null;
             this.customParentId = '';
-            this.lhsPostId = graph.postIds[0] || null;
+            this.lhsPostId = null;
             this.syncLhsState();
         },
 
-        setLhsPost(postId) {
-            if (!this.currentGraph.postIds.includes(postId)) return;
+        selectSuperior(postId) {
+            if (!postId) return;
+            this.selectedSuperiorId = postId;
             this.lhsPostId = postId;
             this.syncLhsState();
         },
 
+        setLhsPost(postId) {
+            this.selectSuperior(postId);
+        },
+
         syncLhsState() {
+            if (!this.lhsPostId) {
+                this.activeRating = null;
+                this.originalRating = null;
+                this.lhsTagsCategorized = {};
+                this.originalLhsTagNames = new Set();
+                this.newTags = new Set();
+                this.removedLhsTags = [];
+                return;
+            }
+
             const localPost = this.getLocalClusterPost(this.lhsPostId);
             const rawPost = this.lhsPost;
 
