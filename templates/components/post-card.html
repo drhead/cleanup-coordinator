@@ -74,7 +74,7 @@
             <div class="flex items-center space-x-1.5">
                 <span class="text-gray-500 font-semibold text-[10px] uppercase tracking-wider block">Post Tags</span>
                 <span class="text-gray-600 font-mono text-[10px] font-medium"
-                      x-text="`(${Object.values(post.tags_categorized || {}).flat().length})`"></span>
+                    x-text="`(${Object.values(post.tags_categorized || {}).flat().length})`"></span>
             </div>
             
             <!-- Copy Merged Tags Action Button -->
@@ -87,12 +87,12 @@
                 
                 <!-- Merged Tag Count Delta Indicator -->
                 <span class="font-mono text-[10px] font-semibold"
-                      :class="{
-                          'text-emerald-400': getMergedTagDelta(post, cluster.posts) > 0,
-                          'text-amber-400': getMergedTagDelta(post, cluster.posts) < 0,
-                          'text-gray-600': getMergedTagDelta(post, cluster.posts) === 0
-                      }"
-                      x-text="`(${getMergedTagDelta(post, cluster.posts) > 0 ? '+' : ''}${getMergedTagDelta(post, cluster.posts)})`">
+                    :class="{
+                        'text-emerald-400': getMergedTagDelta(post, cluster.posts) > 0,
+                        'text-amber-400': getMergedTagDelta(post, cluster.posts) < 0,
+                        'text-gray-600': getMergedTagDelta(post, cluster.posts) === 0
+                    }"
+                    x-text="`(${getMergedTagDelta(post, cluster.posts) > 0 ? '+' : ''}${getMergedTagDelta(post, cluster.posts)})`">
                 </span>
             </button>
         </div>
@@ -103,31 +103,63 @@
         </template>
         
         <!-- Categorized Tag Pills Cloud -->
-        <div class="flex flex-wrap gap-x-2 gap-y-1">
-            <template x-for="tag in getSortedTags(post.tags_categorized)" :key="tag.category + ':' + tag.name">
-                <span class="font-mono text-[11px] leading-tight transition-all duration-150"
-                      :class="{
-                          'font-bold': !['GENERAL', 'META'].includes(tag.category),
-                          'font-normal': ['GENERAL', 'META'].includes(tag.category),
+        <div class="flex flex-wrap gap-x-1 gap-y-1">
+            <template x-for="tag in getSortedTags(post.tags_categorized, post)" :key="tag.category + ':' + tag.name">
+                <span class="font-mono text-[11px] leading-tight transition-colors duration-150 inline-flex items-center px-1 rounded border border-transparent select-none"
+                    :class="{
+                        'font-bold': !['GENERAL', 'META'].includes(tag.category),
+                        'font-normal': ['GENERAL', 'META'].includes(tag.category),
 
-                          'opacity-100': 
-                              hoveredMergedData?.clusterId == cluster.cluster_id && 
-                              hoveredMergedData?.targetPostId == post.post_id,
+                        /* Merged tags hover states */
+                        'opacity-100': 
+                            hoveredMergedData?.clusterId == cluster.cluster_id && 
+                            hoveredMergedData?.targetPostId == post.post_id,
 
-                          'opacity-100 brightness-125 font-bold': 
-                              hoveredMergedData?.clusterId == cluster.cluster_id && 
-                              hoveredMergedData?.targetPostId != post.post_id && 
-                              hoveredMergedData?.tags.includes(tag.name),
+                        'opacity-100 brightness-125 font-bold': 
+                            hoveredMergedData?.clusterId == cluster.cluster_id && 
+                            hoveredMergedData?.targetPostId != post.post_id && 
+                            hoveredMergedData?.tags.includes(tag.name),
 
-                          'opacity-30': 
-                              hoveredMergedData?.clusterId == cluster.cluster_id && 
-                              hoveredMergedData?.targetPostId != post.post_id && 
-                              !hoveredMergedData?.tags.includes(tag.name),
+                        'opacity-30': 
+                            hoveredMergedData?.clusterId == cluster.cluster_id && 
+                            hoveredMergedData?.targetPostId != post.post_id && 
+                            !hoveredMergedData?.tags.includes(tag.name),
 
-                          'opacity-90': hoveredMergedData?.clusterId != cluster.cluster_id
-                      }"
-                      :style="getTagStyle(tag.category)"
-                      x-text="tag.name"></span>
+                        'opacity-90': hoveredMergedData?.clusterId != cluster.cluster_id,
+
+                        /* Hovered Tag Self */
+                        'bg-gray-800! text-white! border-gray-400!':
+                            hoveredImplicationData?.postId === post.post_id &&
+                            hoveredImplicationData?.tagName === tag.name,
+
+                        /* Direct Implicators (Solid Amber) */
+                        'bg-amber-500/30! text-amber-300! border-amber-400!':
+                            hoveredImplicationData?.postId === post.post_id &&
+                            hoveredImplicationData?.directImplicators.includes(tag.name),
+
+                        /* Indirect Implicators (Dashed Amber) */
+                        'bg-amber-500/10! text-amber-400/80! border-dashed! border-amber-500/60!':
+                            hoveredImplicationData?.postId === post.post_id &&
+                            hoveredImplicationData?.indirectImplicators.includes(tag.name),
+
+                        /* Direct Implied (Solid Cyan) */
+                        'bg-cyan-500/30! text-cyan-300! border-cyan-400!':
+                            hoveredImplicationData?.postId === post.post_id &&
+                            hoveredImplicationData?.directImplied.includes(tag.name),
+
+                        /* Indirect Implied (Dashed Cyan) */
+                        'bg-cyan-500/10! text-cyan-400/80! border-dashed! border-cyan-500/60!':
+                            hoveredImplicationData?.postId === post.post_id &&
+                            hoveredImplicationData?.indirectImplied.includes(tag.name)
+                    }"
+                    :style="getTagStyle(tag.category)"
+                    @mouseenter="setHoveredTag(post.post_id, tag.name, post.tags_categorized)"
+                    @mouseleave="clearHoveredTag()">
+                    <span x-text="tag.name"></span>
+                    <template x-if="isImpliedTag(tag.name, post.tags_categorized)">
+                        <span class="text-emerald-400 font-bold text-[9px] ml-0.5 select-none" title="Implied tag">i</span>
+                    </template>
+                </span>
             </template>
         </div>
     </div>

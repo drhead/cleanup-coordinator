@@ -71,6 +71,8 @@ document.addEventListener('alpine:init', () => {
                 this.checkLocalLeaseExpiration();
             }, 1000);
 
+            this.initTags();
+
             this.startBackgroundPolling();
         }
     }));
