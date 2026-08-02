@@ -1,5 +1,9 @@
 <div class="border rounded-lg p-4 transition"
-     x-data="{ hoveredImplicationData: null, hoveredMergedData: null }"
+     x-data="{ 
+         activeView: 'none', 
+         hoveredImplicationData: null, 
+         hoveredMergedData: null 
+     }"
      :class="cluster.is_resolved ? 'bg-gray-950 border-gray-800 opacity-80' : 'bg-gray-900 border-gray-800'">
     
     <!-- Cluster Header Line (Collapsible Trigger) -->
@@ -37,9 +41,77 @@
         </template>
     </div>
 
-    <!-- Embedded Comparison UI -->
+    <!-- Cluster Workflow Container -->
     <template x-if="!cluster.collapsed">
-        <load src="/templates/components/cluster-comparison.html" />
+        <div class="my-3 space-y-3">
+
+            <!-- Initial Action Triggers -->
+            <template x-if="e621User && activeView === 'none'">
+                <div class="flex justify-center gap-3 py-2">
+                    <button @click="activeView = 'compare'"
+                            class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded font-semibold transition flex items-center gap-2 shadow-md">
+                        <span>🔍</span>
+                        <span>Start Comparison</span>
+                    </button>
+
+                    <button @click="activeView = 'reconcile'"
+                            class="bg-purple-600 hover:bg-purple-500 text-white text-xs px-4 py-2 rounded font-semibold transition flex items-center gap-2 shadow-md">
+                        <span>🏷️</span>
+                        <span>Direct Tag Reconciliation</span>
+                    </button>
+                </div>
+            </template>
+
+            <!-- Screen 1: Comparison View Scope -->
+            <template x-if="activeView === 'compare'">
+                <div x-data="ComparisonManager(cluster)" x-init="startComparison()">
+                    <template x-if="isActive">
+                        <div class="space-y-3">
+                            <load src="/templates/components/cluster-comparison.html" />
+
+                            <!-- Hand-off Bar -->
+                            <div class="flex items-center justify-between bg-gray-950 border border-gray-800 rounded-lg p-3">
+                                <button @click="closeComparison(); activeView = 'none'"
+                                        class="text-xs text-gray-400 hover:text-white px-3 py-1.5 rounded border border-gray-800 hover:bg-gray-800 transition">
+                                    Exit
+                                </button>
+
+                                <button @click="
+                                            cluster.pairs = pairs;
+                                            cluster._fetchedPosts = fetchedPostsMap;
+                                            closeComparison();
+                                            activeView = 'reconcile';
+                                        "
+                                        class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded font-bold transition flex items-center gap-2 shadow-md">
+                                    <span>Proceed to Tag Reconciliation</span>
+                                    <span>→</span>
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+
+            <!-- Screen 2: Tag Reconciliation View Scope -->
+            <template x-if="activeView === 'reconcile'">
+                <div x-data="ReconciliationManager(cluster)" x-init="startReconciliation()">
+                    <template x-if="isActive">
+                        <div class="space-y-3">
+                            <load src="/templates/components/cluster-reconciliation.html" />
+
+                            <div class="flex items-center justify-between border-t border-gray-800 pt-3">
+                                <button @click="closeReconciliation(); activeView = 'compare'"
+                                        class="text-xs text-gray-400 hover:text-white px-3 py-1.5 rounded border border-gray-800 hover:bg-gray-800 flex items-center gap-1 transition">
+                                    <span>←</span>
+                                    <span>Back to Comparison</span>
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+
+        </div>
     </template>
 
     <!-- Posts Grid inside Cluster -->

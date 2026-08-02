@@ -147,6 +147,8 @@ export function ComparisonManager(cluster) {
                     .map(p => fetchedMap.get(p.post_id))
                     .filter(p => p && (p.file?.url || p.sample?.url || p.preview?.url));
 
+                this.fetchedPostsMap = fetchedMap;
+                cluster._fetchedPosts = fetchedMap;
                 if (availableClusterPosts.length <= 1) {
                     throw new Error('Failed to load metadata for comparison.');
                 }

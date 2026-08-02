@@ -7,6 +7,7 @@ import { BatchManager } from './batches.js';
 import { BlacklistManager } from './blacklist.js';
 import { AuthManager } from './auth.js';
 import { ComparisonManager } from './comparison.js';
+import { ReconciliationManager } from './reconciliation.js';
 
 window.Alpine = Alpine;
 

@@ -1,0 +1,280 @@
+<div class="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-5 text-gray-200">
+
+    <!-- 1. TOP ROW: Graph Selection Buttons -->
+    <div class="flex items-center gap-2 overflow-x-auto pb-2 border-b border-gray-800">
+        <span class="text-xs font-bold text-gray-400 uppercase tracking-wider mr-2">Graphs:</span>
+        <template x-for="(graph, idx) in graphs" :key="graph.id">
+            <button @click="selectGraph(idx)"
+                    class="text-xs px-3 py-1.5 rounded font-mono font-semibold transition border flex items-center gap-2"
+                    :class="{
+                        'ring-2 ring-blue-500 shadow-lg': activeGraphIndex === idx,
+                        'bg-amber-950/50 text-amber-300 border-amber-800/80 hover:bg-amber-900/60': graph.type === 'duplicate',
+                        'bg-purple-950/50 text-purple-300 border-purple-800/80 hover:bg-purple-900/60': graph.type === 'variant',
+                        'bg-gray-900 text-gray-400 border-gray-800 hover:text-white': graph.type === 'unrelated'
+                    }">
+                <span class="w-2 h-2 rounded-full"
+                      :class="{
+                          'bg-amber-400': graph.type === 'duplicate',
+                          'bg-purple-400': graph.type === 'variant',
+                          'bg-gray-500': graph.type === 'unrelated'
+                      }"></span>
+                <span x-text="`Graph #${graph.id} (${graph.type})`"></span>
+            </button>
+        </template>
+    </div>
+
+    <!-- 2. WORKFLOW CONTROL BAR -->
+    <div class="bg-gray-900 border border-gray-800 rounded-md p-3 flex flex-wrap items-center justify-between gap-3">
+        <template x-if="currentGraph.type === 'duplicate'">
+            <div class="flex items-center gap-3 w-full">
+                <template x-if="!selectedSuperiorId">
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs font-bold text-amber-400 uppercase tracking-wider">Select Superior Version:</span>
+                        <template x-for="pId in currentGraph.postIds" :key="pId">
+                            <button @click="selectedSuperiorId = pId; setLhsPost(pId)"
+                                    class="text-xs px-3 py-1.5 rounded font-mono font-bold bg-amber-600 hover:bg-amber-500 text-white transition shadow">
+                                <span x-text="`Post #${pId}`"></span>
+                            </button>
+                        </template>
+                    </div>
+                </template>
+
+                <template x-if="selectedSuperiorId">
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs text-gray-400">Superior / Kept Post:</span>
+                        <button @click="selectedSuperiorId = null"
+                                class="text-xs px-3 py-1 rounded font-mono font-bold bg-amber-950 text-amber-300 border border-amber-700/80 hover:bg-amber-900 flex items-center gap-2">
+                            <span x-text="`✓ Post #${selectedSuperiorId}`"></span>
+                            <span class="text-[10px] text-amber-400 underline">(Change)</span>
+                        </button>
+                    </div>
+                </template>
+            </div>
+        </template>
+
+        <template x-if="currentGraph.type === 'variant'">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 w-full">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-xs font-bold text-purple-400 uppercase tracking-wider">Parent Post:</span>
+                    <template x-if="!selectedParentId">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <template x-for="pId in currentGraph.postIds" :key="pId">
+                                <button @click="selectedParentId = pId"
+                                        class="text-xs px-2.5 py-1 rounded font-mono bg-purple-900/60 border border-purple-700/80 text-purple-200 hover:bg-purple-800 transition">
+                                    <span x-text="`#${pId}`"></span>
+                                </button>
+                            </template>
+                            <div class="flex items-center gap-1">
+                                <input type="number" placeholder="Other ID..." x-model="customParentId"
+                                       class="w-24 text-xs bg-gray-950 border border-gray-800 rounded px-2 py-1 text-gray-200 focus:outline-none focus:border-purple-500 font-mono">
+                                <button @click="if(customParentId) selectedParentId = parseInt(customParentId)"
+                                        class="text-xs px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded text-gray-300">Set</button>
+                            </div>
+                        </div>
+                    </template>
+                    <template x-if="selectedParentId">
+                        <button @click="selectedParentId = null"
+                                class="text-xs px-3 py-1 rounded font-mono font-bold bg-purple-950 text-purple-300 border border-purple-700 hover:bg-purple-900 flex items-center gap-2">
+                            <span x-text="`Parent: #${selectedParentId}`"></span>
+                            <span class="text-[10px] text-purple-400 underline">(Change)</span>
+                        </button>
+                    </template>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- 3. MAIN CONTENT AREA -->
+    <template x-if="lhsPost">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            
+            <!-- LHS (Active / Kept Post) -->
+            <div class="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-4">
+                <div class="flex items-center justify-between border-b border-gray-800 pb-2">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold px-2 py-0.5 bg-blue-950 text-blue-400 border border-blue-800/60 rounded">LHS / Kept</span>
+                        <span class="text-xs font-mono font-bold text-blue-400" x-text="`Post #${lhsPost.id || lhsPost.post_id}`"></span>
+                    </div>
+                    <span class="text-[11px] font-mono text-gray-500" x-text="getPostDimensions(lhsPost)"></span>
+                </div>
+
+                <div class="w-full h-64 bg-black/60 rounded flex items-center justify-center overflow-hidden border border-gray-800">
+                    <img :src="getPostImageUrl(lhsPost)" class="max-h-full max-w-full object-contain">
+                </div>
+
+                <!-- Rating Affirmation -->
+                <div class="space-y-1.5 p-2.5 rounded border bg-gray-950/60 border-gray-800">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold text-gray-400">Rating Affirmation:</span>
+                        <template x-if="hasRatingConflict">
+                            <span class="text-[10px] font-bold text-red-400 uppercase tracking-wide">⚠️ Conflict Detected</span>
+                        </template>
+                    </div>
+
+                    <div class="flex justify-start bg-gray-900 border border-gray-800 rounded p-1 gap-1 w-max">
+                        <template x-for="r in ['s', 'q', 'e']" :key="r">
+                            <button @click="setRating(r)"
+                                    class="text-xs px-3 py-1 rounded font-bold uppercase transition"
+                                    :class="activeRating === r 
+                                        ? (r === 's' ? 'bg-green-500 text-green-950' : (r === 'q' ? 'bg-amber-500 text-amber-950' : 'bg-red-500 text-red-950')) 
+                                        : (activeRating === null && (getLocalClusterPost(lhsPostId)?.rating || getLocalClusterPost(lhsPostId)?.rating_letter) === r
+                                            ? (r === 's' ? 'text-green-500 hover:bg-gray-800' : (r === 'q' ? 'text-amber-500 hover:bg-gray-800' : 'text-red-500 hover:bg-gray-800'))
+                                            : 'text-white hover:bg-gray-800')">
+                                <span x-text="r"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- LHS Categorized Tag Cloud -->
+                <div class="space-y-2">
+                    <span class="text-xs font-semibold text-gray-400">Active Tags (Click to remove):</span>
+                    
+                    <div class="flex flex-wrap gap-x-1 gap-y-1 min-h-[60px] p-2 bg-gray-950 rounded border border-gray-800">
+                        <template x-for="tag in getSortedTags(lhsTagsCategorized, lhsPost)" :key="tag.category + ':' + tag.name">
+                            <span class="font-mono text-[11px] leading-tight inline-flex items-center px-1 rounded border border-transparent select-none transition-all duration-150 ease-in-out cursor-pointer"
+                                  :class="{
+                                      'ring-1 ring-emerald-400 bg-emerald-950/60 text-emerald-300 font-bold': newTags.has(tag.name),
+
+                                      ...(hoveredImplicationData ? {
+                                          'bg-gray-800! text-white! border-gray-400!':
+                                              hoveredImplicationData.tagName === tag.name,
+
+                                          'bg-amber-500/30! text-amber-300! border-amber-400! font-bold':
+                                              hoveredImplicationData.directImplicators.has(tag.name),
+
+                                          'bg-amber-500/10! text-amber-400/80! border-dashed! border-amber-500/60!':
+                                              hoveredImplicationData.indirectImplicators.has(tag.name),
+
+                                          'bg-cyan-500/15! text-cyan-300/80! border-cyan-500/40!':
+                                              hoveredImplicationData.directImplied.has(tag.name),
+
+                                          'bg-cyan-500/5! text-cyan-400/50! border-dashed! border-cyan-500/30!':
+                                              hoveredImplicationData.indirectImplied.has(tag.name)
+                                      } : {})
+                                  }"
+                                  :style="getTagStyle(tag.category)"
+                                  @click="removeTagWithImplications(tag)"
+                                  @mouseenter="hoveredImplicationData = getImplicationChain(lhsPost.id || lhsPost.post_id, tag.name, lhsTagsCategorized)"
+                                  @mouseleave="hoveredImplicationData = null">
+                                
+                                <span x-text="tag.name"></span>
+                                
+                                <span x-show="isImpliedTag(tag.name, lhsTagsCategorized)"
+                                      class="text-emerald-400 font-bold text-[9px] ml-0.5 select-none"
+                                      title="Implied tag">i</span>
+                                
+                                <span class="text-[9px] text-gray-400 hover:text-red-400 ml-1">×</span>
+                            </span>
+                        </template>
+                    </div>
+
+                    <!-- Removed Tags (Click to Restore) -->
+                    <template x-if="removedLhsTags.length > 0">
+                        <div class="space-y-1">
+                            <span class="text-[11px] text-gray-500">Originally present, removed tags (Click to restore):</span>
+                            <div class="flex flex-wrap gap-x-1 gap-y-1 p-2 bg-gray-950/40 rounded border border-gray-900">
+                                <template x-for="tag in removedLhsTags" :key="tag.category + ':' + tag.name">
+                                    <span @click="restoreTag(tag)"
+                                          class="font-mono text-[11px] leading-tight inline-flex items-center px-1.5 py-0.5 rounded bg-gray-900 text-gray-600 line-through border border-gray-800 cursor-pointer hover:text-gray-300 hover:no-underline"
+                                          title="Click to restore">
+                                        <span x-text="tag.name"></span>
+                                    </span>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Add Tag Input -->
+                    <div class="flex items-center gap-2 pt-1">
+                        <input type="text" x-model="tagInput" @keydown.enter.prevent="addCustomTag()"
+                               placeholder="Add tag..."
+                               class="flex-1 text-xs bg-gray-950 border border-gray-800 rounded px-2.5 py-1.5 text-gray-200 focus:outline-none focus:border-blue-500">
+                        <button @click="addCustomTag()"
+                                class="text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded font-semibold transition">
+                            Add Tag
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RHS (Comparison Posts) -->
+            <div class="space-y-4">
+                <template x-for="post in rhsPosts" :key="post.id || post.post_id">
+                    <div class="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-4">
+                        <div class="flex items-center justify-between border-b border-gray-800 pb-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold px-2 py-0.5 bg-gray-800 text-gray-400 border border-gray-700 rounded">Comparison</span>
+                                <span class="text-xs font-mono font-bold text-gray-300" x-text="`Post #${post.id || post.post_id}`"></span>
+                            </div>
+                            <span class="text-[11px] font-mono text-gray-500" x-text="`Rating: ${(post.rating || post.rating_letter || '?').toUpperCase()}`"></span>
+                        </div>
+
+                        <div class="w-full h-48 bg-black/60 rounded flex items-center justify-center overflow-hidden border border-gray-800">
+                            <img :src="getPostImageUrl(post)" class="max-h-full max-w-full object-contain">
+                        </div>
+
+                        <!-- RHS Tag Cloud -->
+                        <div class="space-y-1.5">
+                            <span class="text-xs font-semibold text-gray-400">Post Tags (Click to copy to LHS):</span>
+                            
+                            <div class="flex flex-wrap gap-x-1 gap-y-1 p-2 bg-gray-950 rounded border border-gray-800">
+                                <template x-for="tag in getSortedTags(post)" :key="tag.category + ':' + tag.name">
+                                    <span class="font-mono text-[11px] leading-tight inline-flex items-center px-1 rounded border border-transparent select-none transition-all duration-150 ease-in-out"
+                                          :class="{
+                                              'opacity-30 cursor-not-allowed': isTagOnLhs(tag.name),
+                                              'cursor-pointer hover:brightness-125': !isTagOnLhs(tag.name),
+
+                                              ...(hoveredImplicationData ? {
+                                                  'bg-gray-800! text-white! border-gray-400!':
+                                                      hoveredImplicationData.tagName === tag.name,
+
+                                                  'bg-cyan-500/30! text-cyan-300! border-cyan-400! font-bold':
+                                                      hoveredImplicationData.directImplied.has(tag.name),
+
+                                                  'bg-cyan-500/10! text-cyan-400/80! border-dashed! border-cyan-500/60!':
+                                                      hoveredImplicationData.indirectImplied.has(tag.name),
+
+                                                  'bg-amber-500/15! text-amber-300/80! border-amber-500/40!':
+                                                      hoveredImplicationData.directImplicators.has(tag.name),
+
+                                                  'bg-amber-500/5! text-amber-400/50! border-dashed! border-amber-500/30!':
+                                                      hoveredImplicationData.indirectImplicators.has(tag.name)
+                                              } : {})
+                                          }"
+                                          :style="getTagStyle(tag.category)"
+                                          @click="if(!isTagOnLhs(tag.name)) copyTagToLhsWithImplications(tag)"
+                                          @mouseenter="hoveredImplicationData = getImplicationChain(post.id || post.post_id, tag.name, post)"
+                                          @mouseleave="hoveredImplicationData = null">
+                                        
+                                        <span x-text="tag.name"></span>
+                                        
+                                        <span x-show="isImpliedTag(tag.name, post)"
+                                              class="text-emerald-400 font-bold text-[9px] ml-0.5 select-none"
+                                              title="Implied tag">i</span>
+                                        
+                                        <template x-if="!isTagOnLhs(tag.name)">
+                                            <span class="ml-1 text-[9px] text-blue-400 font-bold">+</span>
+                                        </template>
+                                    </span>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+        </div>
+    </template>
+
+    <!-- 4. BOTTOM NAVIGATION -->
+    <div class="flex items-center justify-between border-t border-gray-800 pt-4">
+        <span class="text-xs text-gray-500" x-text="`Reconciling Graph ${activeGraphIndex + 1} of ${graphs.length}`"></span>
+        <button @click="nextGraph()"
+                class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-5 py-2 rounded font-bold transition shadow-md flex items-center gap-2">
+            <span>Next Graph</span>
+            <span>→</span>
+        </button>
+    </div>
+
+</div>
