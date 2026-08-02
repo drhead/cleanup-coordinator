@@ -1,4 +1,4 @@
-"""Projects router migrated to async PostgreSQL."""
+"""Projects router."""
 
 from typing import Any
 from collections import defaultdict
@@ -60,7 +60,7 @@ class ProjectBatchesResponse(msgspec.Struct, kw_only=True):
 
 
 tags_decoder = msgspec.json.Decoder(TagsCategorized)
-encoder = msgspec.json.Encoder()
+msgpack_encoder = msgspec.msgpack.Encoder()
 
 def parse_cluster_post(row: asyncpg.Record) -> ClusterPost:
     raw_json = row["tags_json"] or "{}"
@@ -109,10 +109,10 @@ async def get_project_batches(
 
         if not batches_rows:
             return Response(
-                content=encoder.encode(
+                content=msgpack_encoder.encode(
                     ProjectBatchesResponse(project_id=project_id, batches=[])
                 ),
-                media_type="application/json",
+                media_type="application/msgpack",
             )
 
         # 2. Fetch clusters and post metadata
@@ -197,6 +197,6 @@ async def get_project_batches(
         project_id=project_id, batches=batch_list
     )
     return Response(
-        content=encoder.encode(response_payload),
-        media_type="application/json",
+        content=msgpack_encoder.encode(response_payload),
+        media_type="application/msgpack",
     )

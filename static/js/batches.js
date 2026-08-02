@@ -1,3 +1,4 @@
+import { decode } from '@msgpack/msgpack';
 import { E621BlacklistEvaluator, applyBlacklistToCluster } from './blacklist.js';
 
 export const BatchManager = {
@@ -11,13 +12,17 @@ export const BatchManager = {
 
         try {
             const [batchesRes, leasesRes] = await Promise.all([
-                fetch(`/api/v1/projects/${this.activeProject.project_id}/batches`),
+                fetch(`/api/v1/projects/${this.activeProject.project_id}/batches`, {
+                    headers: { 'Accept': 'application/msgpack' }
+                }),
                 fetch('/api/v1/leases')
             ]);
 
             if (!batchesRes.ok) return;
 
-            const batchesData = await batchesRes.json();
+            const batchesBuffer = await batchesRes.arrayBuffer();
+            const batchesData = decode(batchesBuffer);
+
             const activeLeases = leasesRes.ok ? (await leasesRes.json()).leases || [] : [];
             const incomingBatches = batchesData.batches || [];
 
@@ -148,8 +153,11 @@ export const BatchManager = {
         if (batch) {
             this.viewBatchDetail(batch);
         } else {
-            fetch(`/api/v1/projects/${lease.project_id}/batches`)
-                .then(res => res.json())
+            fetch(`/api/v1/projects/${lease.project_id}/batches`, {
+                headers: { 'Accept': 'application/msgpack' }
+            })
+                .then(res => res.arrayBuffer())
+                .then(buf => decode(buf))
                 .then(data => {
                     this.batches = data.batches || [];
                     const found = this.batches.find(b => b.batch_id === lease.batch_id);

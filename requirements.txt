@@ -5,3 +5,4 @@ msgspec>=0.18.0
 httpx>=0.24.0
 asyncpg>=0.31.0
 asyncpg-stubs>=0.31.0
+brotli-stubs>=1.2.0
