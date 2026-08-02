@@ -10,7 +10,7 @@ from app.flag_worker import flag_poller_loop
 from app.post_worker import project_worker_manager
 from app.tags_worker import run_tags_worker
 from app.leases import lease_poller_loop
-from app.routes import batches, leases, projects, views
+from app.routes import batches, leases, projects, views, static_data
 from app.db import init_db_pool, close_db_pool
 
 
@@ -64,3 +64,4 @@ app.include_router(views.router)
 app.include_router(projects.router)
 app.include_router(batches.router)
 app.include_router(leases.router)
+app.include_router(static_data.router)
