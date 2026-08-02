@@ -98,7 +98,7 @@ export function ComparisonManager(cluster) {
                 backgroundImage: `url(${post.file.url || post.sample.url})`,
                 backgroundSize: `${bgW}px ${bgH}px`,
                 backgroundPosition: `${bgLeft}px ${bgTop}px`,
-                imageRendering: 'pixelated'
+                imageRendering: this.zoomLevel > 1 ? 'pixelated' : 'auto'
             };
         },
 
