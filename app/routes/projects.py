@@ -1,5 +1,6 @@
 """Projects router."""
 
+import hashlib
 from typing import Any
 from collections import defaultdict
 import gzip
@@ -148,7 +149,22 @@ async def get_project_batches(
             project_id,
         )
 
-    # 3. Group in memory
+    # since our query is quite fast and is cachable by ReadySet we can ETag this
+    # and avoid sending the payload
+    etag_hasher = hashlib.blake2b(digest_size=16)
+    etag_hasher.update(client_ip.encode("utf-8"))
+
+    etag_hasher.update(str(batches_rows).encode("utf-8"))
+    etag_hasher.update(str(flat_rows).encode("utf-8"))
+    
+    etag = f'"{etag_hasher.hexdigest()}"'
+
+    # Check against incoming If-None-Match header
+    if_none_match = request.headers.get("if-none-match")
+    if if_none_match and if_none_match == etag:
+        return Response(status_code=304, headers={"ETag": etag, "Vary": "Accept-Encoding"})
+
+    # 3. Group in memory (Only reached if database data actually changed)
     clusters_by_batch: dict[int, dict[int, dict[str, Any]]] = defaultdict(
         lambda: defaultdict(lambda: {"info": None, "posts": []})
     )
@@ -215,25 +231,16 @@ async def get_project_batches(
     # 5. Compress dynamically based on Accept-Encoding
     encodings = parse_accept_encoding(request.headers.get("accept-encoding", ""))
     media_type = "application/msgpack"
+    headers = {"ETag": etag, "Vary": "Accept-Encoding"}
 
     if "br" in encodings:
         compressed = brotli.compress(raw_bytes, quality=3)
-        return Response(
-            content=compressed,
-            media_type=media_type,
-            headers={"Content-Encoding": "br", "Vary": "Accept-Encoding"},
-        )
+        headers["Content-Encoding"] = "br"
+        return Response(content=compressed, media_type=media_type, headers=headers)
 
     if "gzip" in encodings:
         compressed = gzip.compress(raw_bytes, compresslevel=6)
-        return Response(
-            content=compressed,
-            media_type=media_type,
-            headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"},
-        )
+        headers["Content-Encoding"] = "gzip"
+        return Response(content=compressed, media_type=media_type, headers=headers)
 
-    return Response(
-        content=raw_bytes,
-        media_type=media_type,
-        headers={"Vary": "Accept-Encoding"},
-    )
+    return Response(content=raw_bytes, media_type=media_type, headers=headers)

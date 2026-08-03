@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS pg_ivm;
+
 -- =========================================================================
 -- TABLES
 -- =========================================================================
@@ -92,7 +94,7 @@ CREATE INDEX IF NOT EXISTS idx_post_flags_pk_only ON post_flags(flag_id);
 -- =========================================================================
 
 -- Raw aggregate counts directly maintained on post_flags changes
-SELECT pgivm.create_immv(
+SELECT create_immv(
     'immv_post_flag_counts',
     $$
     SELECT 

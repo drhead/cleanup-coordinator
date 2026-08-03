@@ -1,0 +1,84 @@
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    container_name: coordinator_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    command:
+      - "postgres"
+      - "-c" 
+      - "shared_preload_libraries=pg_stat_statements"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_replication_slots=10"
+      - "-c"
+      - "max_wal_senders=10"
+      - "-c"
+      - "max_connections=400"
+      - "-c"
+      - "shared_buffers=32GB"
+      - "-c"
+      - "work_mem=64MB"
+      - "-c"
+      - "maintenance_work_mem=4GB"
+      - "-c"
+      - "effective_cache_size=96GB"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "max_worker_processes=128"
+      - "-c"
+      - "max_parallel_workers=64"
+      - "-c"
+      - "max_parallel_workers_per_gather=16"
+      - "-c"
+      - "max_wal_size=16GB"
+      - "-c"
+      - "min_wal_size=2GB"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+    networks:
+      - readyset-net
+
+  readyset:
+    image: readysettech/readyset:latest
+    container_name: coordinator_readyset
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - UPSTREAM_DB_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@172.19.0.1:5432/${POSTGRES_DB}
+      - LISTEN_ADDRESS=0.0.0.0:5433
+      - DEPLOYMENT_MODE=standalone
+      - STORAGE_DIR=/data/cache
+      - DISABLE_TELEMETRY=true
+      - CACHE_MODE=deep
+    ports:
+      - "${READYSET_PORT}:5433"
+      - "6034:6034"
+    networks:
+      - readyset-net
+    volumes:
+      - readyset_cache:/data/cache
+
+volumes:
+  postgres_data:
+  readyset_cache:
+
+networks:
+  readyset-net:
+    driver: bridge

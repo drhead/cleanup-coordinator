@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import asyncpg
+import asyncio
 from app.secrets import secrets
 
 SECRETS_PATH = Path("secrets.json")
@@ -21,18 +22,24 @@ async def init_db_pool() -> None:
         password=secrets.postgresql_password,
         database="coordinator_db",
         host="localhost",
-        port=5432,
+        port=5433,
         min_size=10,
         max_size=50,
     )
 
 
 async def close_db_pool() -> None:
-    """Close the global connection pool."""
+    """Close the global connection pool gracefully with a fallback timeout."""
     global _pool
     if _pool is not None:
-        await _pool.close()
-        _pool = None
+        try:
+            # Give ReadySet 1.5s to shut connections down gracefully
+            await asyncio.wait_for(_pool.close(), timeout=1.5)
+        except asyncio.TimeoutError:
+            # Force-terminate underlying transports if proxy connection stalls
+            _pool.terminate()
+        finally:
+            _pool = None
 
 
 def get_db() -> asyncpg.Pool:
