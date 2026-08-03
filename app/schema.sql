@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS cluster_posts (
     parent_id BIGINT,
     pool_ids INTEGER[] NOT NULL DEFAULT '{}',
     rating TEXT,
-    tags_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    tags TEXT[] NOT NULL DEFAULT '{}',
     image_width INTEGER CHECK (image_width IS NULL OR image_width >= 0),
     image_height INTEGER CHECK (image_height IS NULL OR image_height >= 0),
     image_format TEXT,
@@ -82,9 +82,9 @@ CREATE INDEX IF NOT EXISTS idx_post_flags_lookup ON post_flags(post_id, is_resol
 CREATE INDEX IF NOT EXISTS idx_tags_category ON tags(category);
 CREATE INDEX IF NOT EXISTS idx_post_tags_tag ON post_tags(tag_name);
 
--- GIN Indexes for high-performance array and JSON operations
+-- GIN Indexes for high-performance array operations
 CREATE INDEX IF NOT EXISTS idx_cluster_posts_pools_gin ON cluster_posts USING GIN (pool_ids);
-CREATE INDEX IF NOT EXISTS idx_cluster_posts_tags_jsonb_gin ON cluster_posts USING GIN (tags_json);
+CREATE INDEX IF NOT EXISTS idx_cluster_posts_tags_gin ON cluster_posts USING GIN (tags);
 
 CREATE INDEX IF NOT EXISTS idx_clusters_batch_index ON clusters(batch_id, cluster_index);
 CREATE INDEX IF NOT EXISTS idx_post_flags_pk_only ON post_flags(flag_id);
@@ -106,8 +106,7 @@ SELECT create_immv(
     $$
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_immv_post_flag_counts_post_id 
-  ON immv_post_flag_counts(post_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_immv_post_flag_counts_post_id ON immv_post_flag_counts(post_id);
 
 -- Standard view presenting clean boolean state per post
 CREATE OR REPLACE VIEW cluster_post_flags AS
@@ -129,7 +128,7 @@ WITH active_posts AS (
         cp.post_id,
         cp.parent_id,
         cp.rating,
-        cp.tags_json,
+        cp.tags,
         cp.pool_ids
     FROM cluster_posts cp
     LEFT JOIN cluster_post_flags cpf ON cp.post_id = cpf.post_id
@@ -143,8 +142,10 @@ cluster_metrics AS (
         (COUNT(DISTINCT ap.rating) > 1) AS has_rating_mismatch,
         (
             COUNT(DISTINCT (
-                SELECT string_agg(artist_tag, ',' ORDER BY artist_tag)
-                FROM jsonb_array_elements_text(ap.tags_json->'ARTIST') AS artist_tag
+                SELECT string_agg(tag_elem, ',' ORDER BY tag_elem)
+                FROM unnest(ap.tags) AS tag_elem
+                JOIN tags t ON t.tag_name = tag_elem
+                WHERE lower(t.category) = 'artist'
             )) > 1
         ) AS has_artist_mismatch,
 
@@ -156,7 +157,7 @@ cluster_metrics AS (
             COUNT(ap.post_id) >= 2 AND EXISTS (
                 SELECT 1
                 FROM active_posts ap_inner,
-                     unnest(ap_inner.pool_ids) AS pool_elem
+                    unnest(ap_inner.pool_ids) AS pool_elem
                 WHERE ap_inner.cluster_id = c.cluster_id
                 GROUP BY pool_elem
                 HAVING COUNT(DISTINCT ap_inner.post_id) = (
@@ -251,7 +252,7 @@ $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trg_reevaluate_cluster_on_post_change ON cluster_posts;
 CREATE TRIGGER trg_reevaluate_cluster_on_post_change
-AFTER UPDATE OF parent_id, pool_ids, rating, tags_json ON cluster_posts
+AFTER UPDATE OF parent_id, pool_ids, rating, tags ON cluster_posts
 FOR EACH ROW
 EXECUTE FUNCTION fn_reevaluate_cluster_from_post();
 
@@ -285,26 +286,19 @@ WHEN (
 )
 EXECUTE FUNCTION fn_reevaluate_cluster_from_cluster();
 
-CREATE OR REPLACE FUNCTION refresh_post_tags_json_on_insert()
+-- 3. Maintain cluster_posts.tags array automatically from post_tags
+CREATE OR REPLACE FUNCTION refresh_cluster_posts_tags_on_insert()
 RETURNS TRIGGER AS $$
 BEGIN
     UPDATE cluster_posts cp
-    SET tags_json = COALESCE(tag_agg.tags_json, '{}'::jsonb)
+    SET tags = COALESCE(tag_agg.tag_array, '{}')
     FROM (
         SELECT 
-            sub.post_id,
-            jsonb_object_agg(COALESCE(upper(sub.category), 'GENERAL'), sub.tag_names) AS tags_json
-        FROM (
-            SELECT 
-                pt.post_id, 
-                t.category, 
-                jsonb_agg(pt.tag_name) AS tag_names
-            FROM post_tags pt
-            JOIN tags t ON pt.tag_name = t.tag_name
-            WHERE pt.post_id IN (SELECT DISTINCT post_id FROM inserted_tags)
-            GROUP BY pt.post_id, t.category
-        ) sub
-        GROUP BY sub.post_id
+            pt.post_id,
+            array_agg(pt.tag_name ORDER BY pt.tag_name) AS tag_array
+        FROM post_tags pt
+        WHERE pt.post_id IN (SELECT DISTINCT post_id FROM inserted_tags)
+        GROUP BY pt.post_id
     ) tag_agg
     WHERE cp.post_id = tag_agg.post_id;
 
@@ -312,44 +306,41 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION refresh_post_tags_json_on_delete()
+CREATE OR REPLACE FUNCTION refresh_cluster_posts_tags_on_delete()
 RETURNS TRIGGER AS $$
 BEGIN
     UPDATE cluster_posts cp
-    SET tags_json = COALESCE(tag_agg.tags_json, '{}'::jsonb)
+    SET tags = COALESCE(tag_agg.tag_array, '{}')
     FROM (
         SELECT 
-            sub.post_id,
-            jsonb_object_agg(COALESCE(upper(sub.category), 'GENERAL'), sub.tag_names) AS tags_json
-        FROM (
-            SELECT 
-                pt.post_id, 
-                t.category, 
-                jsonb_agg(pt.tag_name) AS tag_names
-            FROM post_tags pt
-            JOIN tags t ON pt.tag_name = t.tag_name
-            WHERE pt.post_id IN (SELECT DISTINCT post_id FROM deleted_tags)
-            GROUP BY pt.post_id, t.category
-        ) sub
-        GROUP BY sub.post_id
+            pt.post_id,
+            array_agg(pt.tag_name ORDER BY pt.tag_name) AS tag_array
+        FROM post_tags pt
+        WHERE pt.post_id IN (SELECT DISTINCT post_id FROM deleted_tags)
+        GROUP BY pt.post_id
     ) tag_agg
     WHERE cp.post_id = tag_agg.post_id;
+
+    UPDATE cluster_posts cp
+    SET tags = '{}'
+    WHERE cp.post_id IN (SELECT DISTINCT post_id FROM deleted_tags)
+      AND NOT EXISTS (SELECT 1 FROM post_tags pt WHERE pt.post_id = cp.post_id);
 
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_refresh_post_tags_json_ins ON post_tags;
-DROP TRIGGER IF EXISTS trg_refresh_post_tags_json_del ON post_tags;
+DROP TRIGGER IF EXISTS trg_refresh_cluster_posts_tags_ins ON post_tags;
+DROP TRIGGER IF EXISTS trg_refresh_cluster_posts_tags_del ON post_tags;
 
-CREATE TRIGGER trg_refresh_post_tags_json_ins
+CREATE TRIGGER trg_refresh_cluster_posts_tags_ins
 AFTER INSERT ON post_tags
 REFERENCING NEW TABLE AS inserted_tags
 FOR EACH STATEMENT
-EXECUTE FUNCTION refresh_post_tags_json_on_insert();
+EXECUTE FUNCTION refresh_cluster_posts_tags_on_insert();
 
-CREATE TRIGGER trg_refresh_post_tags_json_del
+CREATE TRIGGER trg_refresh_cluster_posts_tags_del
 AFTER DELETE ON post_tags
 REFERENCING OLD TABLE AS deleted_tags
 FOR EACH STATEMENT
-EXECUTE FUNCTION refresh_post_tags_json_on_delete();
+EXECUTE FUNCTION refresh_cluster_posts_tags_on_delete();

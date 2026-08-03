@@ -74,7 +74,7 @@
             <div class="flex items-center space-x-1.5">
                 <span class="text-gray-500 font-semibold text-[10px] uppercase tracking-wider block">Post Tags</span>
                 <span class="text-gray-600 font-mono text-[10px] font-medium"
-                    x-text="`(${Object.values(post.tags_categorized || {}).flat().length})`"></span>
+                    x-text="`(${(post.tags || []).length})`"></span>
             </div>
             
             <!-- Copy Merged Tags Action Button -->
@@ -98,13 +98,13 @@
         </div>
 
         <!-- Empty Tags Fallback -->
-        <template x-if="getSortedTags(post.tags_categorized).length === 0">
+        <template x-if="getSortedTags(post.tags, post).length === 0">
             <span class="text-gray-500 italic text-[11px] block">No tags available</span>
         </template>
         
         <!-- Categorized Tag Pills Cloud -->
         <div class="flex flex-wrap gap-x-1 gap-y-1">
-            <template x-for="tag in getSortedTags(post.tags_categorized, post)" :key="tag.category + ':' + tag.name">
+            <template x-for="tag in getSortedTags(post.tags, post)" :key="tag.category + ':' + tag.name">
                 <span class="font-mono text-[11px] leading-tight inline-flex items-center px-1 rounded border border-transparent select-none transition-all duration-150 ease-in-out"
                     :class="{
                         /* 1. Active Post Hover Highlights */
@@ -139,10 +139,10 @@
                         } : {})
                     }"
                     :style="getTagStyle(tag.category)"
-                    @mouseenter="hoveredImplicationData = getImplicationChain(post.post_id, tag.name, post.tags_categorized)"
+                    @mouseenter="hoveredImplicationData = getImplicationChain(post.post_id, tag.name, post.tags)"
                     @mouseleave="hoveredImplicationData = null">
                     <span x-text="tag.name"></span>
-                    <span x-show="isImpliedTag(tag.name, post.tags_categorized)"
+                    <span x-show="isImpliedTag(tag.name, post.tags)"
                         class="text-emerald-400 font-bold text-[9px] ml-0.5 select-none"
                         title="Implied tag">i</span>
                 </span>

@@ -1,30 +1,82 @@
 import { decode } from '@msgpack/msgpack';
 
+const CATEGORY_MAP = {
+    0: 'GENERAL',
+    1: 'ARTIST',
+    2: 'CONTRIBUTOR',
+    3: 'COPYRIGHT',
+    4: 'CHARACTER',
+    5: 'SPECIES',
+    6: 'INVALID',
+    7: 'META',
+    8: 'LORE'
+};
+
 export const TagManager = {
     implications: {},
+    hasImplications: false,
+    
+    tagData: {},
+    hasTagData: false,
 
     async initTags() {
         try {
-            const res = await fetch('/static/data/tag_implications.msgpack', {
-                headers: { 'Accept': 'application/msgpack' }
-            });
-            if (!res.ok) return;
-            const buffer = await res.arrayBuffer();
-            this.implications = decode(buffer) || {};
-            this.hasImplications = true;
+            const [implRes, tagsRes] = await Promise.all([
+                fetch('/static/data/tag_implications.msgpack', {
+                    headers: { 'Accept': 'application/msgpack' }
+                }).catch(() => null),
+                fetch('/static/data/tags.msgpack', {
+                    headers: { 'Accept': 'application/msgpack' }
+                }).catch(() => null)
+            ]);
+
+            if (implRes && implRes.ok) {
+                const implBuffer = await implRes.arrayBuffer();
+                this.implications = decode(implBuffer) || {};
+                this.hasImplications = true;
+            }
+
+            if (tagsRes && tagsRes.ok) {
+                const tagsBuffer = await tagsRes.arrayBuffer();
+                this.tagData = decode(tagsBuffer) || {};
+                this.hasTagData = true;
+            }
         } catch (err) {
-            console.error('[TagManager] Failed to load tag implications:', err);
+            console.error('[TagManager] Failed to load tag data:', err);
         }
     },
 
-    getSortedTags(tagsJson, post = null) {
-        if (!tagsJson || typeof tagsJson !== 'object') return [];
+    /**
+     * Converts a flat array of tags into a categorized object using the loaded tag metadata.
+     */
+    categorizeTags(flatTags) {
+        const categorized = {};
+
+        for (const tag of flatTags) {
+            let catName = 'GENERAL';
+            
+            if (this.hasTagData && this.tagData[tag]) {
+                const catId = this.tagData[tag][0];
+                catName = CATEGORY_MAP[catId] || 'GENERAL';
+            }
+
+            if (!categorized[catName]) {
+                categorized[catName] = [];
+            }
+            categorized[catName].push(tag);
+        }
+        
+        return categorized;
+    },
+
+    getSortedTags(flatTags, post = null) {
+        const categorizedTags = this.categorizeTags(flatTags);
 
         // 1. Create a lightweight signature of the current tag content
         // Format: "ARTIST:tag1,tag2|GENERAL:tag3,tag4"
-        const currentSignature = Object.keys(tagsJson)
+        const currentSignature = Object.keys(categorizedTags)
             .sort()
-            .map(cat => `${cat}:${(tagsJson[cat] || []).join(',')}`)
+            .map(cat => `${cat}:${(categorizedTags[cat] || []).join(',')}`)
             .join('|');
 
         // 2. Content-based cache hit check
@@ -35,7 +87,7 @@ export const TagManager = {
         // 3. Re-compute sorting ONLY when tag contents actually differ
         const categoryOrder = ['ARTIST', 'CONTRIBUTOR', 'COPYRIGHT', 'CHARACTER', 'SPECIES', 'GENERAL', 'META', 'LORE', 'INVALID'];
         
-        const keys = Object.keys(tagsJson).sort((a, b) => {
+        const keys = Object.keys(categorizedTags).sort((a, b) => {
             let idxA = categoryOrder.indexOf(a.toUpperCase());
             let idxB = categoryOrder.indexOf(b.toUpperCase());
             if (idxA === -1) idxA = 99;
@@ -45,7 +97,7 @@ export const TagManager = {
 
         let result = [];
         for (const key of keys) {
-            const tags = tagsJson[key] || [];
+            const tags = categorizedTags[key] || [];
             const sortedCategoryTags = this.sortCategoryTags(tags);
 
             for (const tag of sortedCategoryTags) {
@@ -217,12 +269,12 @@ export const TagManager = {
         return processedComponents.flatMap(c => c.tags);
     },
 
-    isImpliedTag(tagName, tagsCategorized) {
-        if (!this.implications || !tagName || !tagsCategorized) return false;
+    isImpliedTag(tagName, flatTags) {
+        if (!this.implications || !tagName) return false;
         const implData = this.implications[tagName];
         if (!implData || !implData.implied_by || implData.implied_by.length === 0) return false;
 
-        const allPostTags = new Set(Object.values(tagsCategorized).flat());
+        const allPostTags = new Set(flatTags);
         return implData.implied_by.some(implicator => allPostTags.has(implicator));
     },
 
@@ -230,10 +282,10 @@ export const TagManager = {
      * Pure function calculating tag implication chains.
      * Implicators & implied lists are stored as Set objects for O(1) template lookup.
      */
-    getImplicationChain(postId, tagName, tagsCategorized) {
-        if (!this.implications || !tagName || !tagsCategorized) return null;
+    getImplicationChain(postId, tagName, flatTags) {
+        if (!this.implications || !tagName) return null;
 
-        const allPostTags = new Set(Object.values(tagsCategorized).flat());
+        const allPostTags = new Set(flatTags);
 
         // 1. Direct Implicators & Implied (1 hop)
         const directImplied = (this.implications[tagName]?.implies || []).filter(t => allPostTags.has(t));
@@ -327,15 +379,15 @@ export const TagManager = {
         if (!clusterPosts || !targetPost) return new Set();
 
         const mergedTags = new Set();
-        const targetArtistTags = targetPost.tags_categorized?.ARTIST || targetPost.tags_categorized?.artist || [];
+        const targetCat = this.categorizeTags(targetPost.tags);
+        const targetArtistTags = targetCat.ARTIST || [];
         targetArtistTags.forEach(tag => mergedTags.add(tag));
 
         for (const post of clusterPosts) {
-            if (!post.tags_categorized) continue;
+            const postCat = this.categorizeTags(post.tags);
 
-            for (const [category, tags] of Object.entries(post.tags_categorized)) {
-                if (category.toUpperCase() === 'ARTIST') continue;
-                if (!Array.isArray(tags)) continue;
+            for (const [category, tags] of Object.entries(postCat)) {
+                if (category === 'ARTIST') continue;
 
                 for (const tag of tags) {
                     if (this.shouldIncludeTag(tag, category, post, targetPost)) {
@@ -372,7 +424,7 @@ export const TagManager = {
     getMergedTagDelta(currentPost, clusterPosts) {
         if (!currentPost) return 0;
 
-        const currentCount = Object.values(currentPost.tags_categorized || {}).flat().length;
+        const currentCount = currentPost.tags.length;
         const mergedCount = this.getMergedTagCount(currentPost, clusterPosts);
 
         return mergedCount - currentCount;
@@ -383,11 +435,12 @@ export const TagManager = {
      * Uses Set for fast O(1) checks in template.
      */
     getMergedHoverData(targetPost, clusterPosts) {
-        const targetTags = new Set(
-            Object.values(targetPost.tags_categorized || {}).flat()
-        );
+        if (!targetPost) {
+            return { targetPostId: undefined, tags: new Set() };
+        }
 
-        const mergedList = Array.from(this.calculateMergedTags(targetPost, clusterPosts) || []);
+        const targetTags = new Set(targetPost.tags);
+        const mergedList = Array.from(this.calculateMergedTags(targetPost, clusterPosts));
         const newTags = mergedList.filter(tag => !targetTags.has(tag));
 
         return {

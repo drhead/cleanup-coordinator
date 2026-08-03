@@ -143,7 +143,7 @@
                     <!-- Interactive LHS Tag Cloud -->
                     <div class="bg-gray-900/90 p-2.5 rounded border border-gray-800/80 space-y-1.5">
                         <div class="flex flex-wrap gap-x-1 gap-y-1">
-                            <template x-for="tag in getSortedTags(lhsTagsCategorized)" :key="tag.category + ':' + tag.name">
+                            <template x-for="tag in getSortedTags(lhsTags)" :key="tag.category + ':' + tag.name">
                                 <span class="font-mono text-[11px] leading-tight inline-flex items-center px-1 rounded border border-transparent select-none transition-all duration-150 ease-in-out cursor-pointer"
                                       :class="{
                                           'ring-2 ring-emerald-400': newTags.has(tag.name),
@@ -152,16 +152,16 @@
                                               'bg-slate-700! text-white! border-slate-300! font-bold! shadow-md!': hoveredImplicationData.tagName === tag.name,
                                               'bg-amber-500/80! text-white! border-amber-300! font-bold! shadow-md! shadow-amber-500/40!': hoveredImplicationData.directImplicators.has(tag.name),
                                               'bg-amber-600/60! text-amber-100! border-dashed! border-amber-300! font-bold! shadow-sm!': hoveredImplicationData.indirectImplicators.has(tag.name),
-                                              'bg-cyan-500/50! text-cyan-100! border-cyan-300! font-bold!': hoveredImplicationData.directImplied.has(tag.name),
-                                              'bg-cyan-600/40! text-cyan-100! border-dashed! border-cyan-400! font-bold!': hoveredImplicationData.indirectImplied.has(tag.name)
+                                              'bg-cyan-500/20! text-cyan-100! border-cyan-300/20! font-bold!': hoveredImplicationData.directImplied.has(tag.name),
+                                              'bg-cyan-600/20! text-cyan-100! border-dashed! border-cyan-400/20! font-bold!': hoveredImplicationData.indirectImplied.has(tag.name)
                                           } : {})
                                       }"
                                       :style="(hoveredImplicationData && hoveredImplicationData.postId === (lhsPost.id || lhsPost.post_id) && (hoveredImplicationData.tagName === tag.name || hoveredImplicationData.directImplicators.has(tag.name) || hoveredImplicationData.indirectImplicators.has(tag.name) || hoveredImplicationData.directImplied.has(tag.name) || hoveredImplicationData.indirectImplied.has(tag.name))) ? '' : getTagStyle(tag.category)"
                                       @click="removeTagWithImplications(tag)"
-                                      @mouseenter="hoveredImplicationData = getImplicationChain(lhsPost.id || lhsPost.post_id, tag.name, lhsTagsCategorized)"
+                                      @mouseenter="hoveredImplicationData = getImplicationChain(lhsPost.id || lhsPost.post_id, tag.name, lhsTags)"
                                       @mouseleave="hoveredImplicationData = null">
                                     <span x-text="tag.name"></span>
-                                    <span x-show="isImpliedTag(tag.name, lhsTagsCategorized)" class="text-emerald-400 font-bold text-[9px] ml-0.5 select-none" title="Implied tag">i</span>
+                                    <span x-show="isImpliedTag(tag.name, lhsTags)" class="text-emerald-400 font-bold text-[9px] ml-0.5 select-none" title="Implied tag">i</span>
                                     <span class="text-[9px] text-gray-400 hover:text-red-400 ml-1">×</span>
                                 </span>
                             </template>
@@ -171,7 +171,7 @@
                         <template x-if="removedLhsTags.length > 0">
                             <div class="space-y-1 pt-1.5 border-t border-gray-800/60">
                                 <div class="flex flex-wrap gap-x-1 gap-y-1">
-                                    <template x-for="tag in removedLhsTags" :key="tag.category + ':' + tag.name">
+                                    <template x-for="tag in getSortedTags(removedLhsTags)" :key="tag.category + ':' + tag.name">
                                         <span @click="restoreTag(tag)"
                                               class="font-mono text-[11px] leading-tight inline-flex items-center px-1.5 py-0.5 rounded bg-gray-950 text-gray-600 line-through border border-gray-800 cursor-pointer hover:text-gray-300 hover:no-underline"
                                               title="Click to restore">
@@ -287,8 +287,8 @@
                                                   'bg-slate-700! text-white! border-slate-300! font-bold! shadow-md!': hoveredImplicationData.tagName === tag.name,
                                                   'bg-cyan-500/80! text-white! border-cyan-300! font-bold! shadow-md! shadow-cyan-500/40!': hoveredImplicationData.directImplied.has(tag.name),
                                                   'bg-cyan-600/60! text-cyan-100! border-dashed! border-cyan-300! font-bold! shadow-sm!': hoveredImplicationData.indirectImplied.has(tag.name),
-                                                  'bg-amber-500/40! text-amber-100! border-amber-400!': hoveredImplicationData.directImplicators.has(tag.name),
-                                                  'bg-amber-600/30! text-amber-200! border-dashed! border-amber-400/80!': hoveredImplicationData.indirectImplicators.has(tag.name)
+                                                  'bg-amber-500/20! text-amber-100! border-amber-400/20!': hoveredImplicationData.directImplicators.has(tag.name),
+                                                  'bg-amber-600/20! text-amber-200! border-dashed! border-amber-400/20!': hoveredImplicationData.indirectImplicators.has(tag.name)
                                               } : {})
                                           }"
                                           :style="(hoveredImplicationData && hoveredImplicationData.postId === (post.id || post.post_id) && (hoveredImplicationData.tagName === tag.name || hoveredImplicationData.directImplied.has(tag.name) || hoveredImplicationData.indirectImplied.has(tag.name) || hoveredImplicationData.directImplicators.has(tag.name) || hoveredImplicationData.indirectImplicators.has(tag.name))) ? '' : getTagStyle(tag.category)"

@@ -181,20 +181,8 @@ export function getClusterUnionTagsAndRating(clusterPosts) {
             canonicalRating = pRating;
         }
 
-        if (post.tags_categorized) {
-            if (Array.isArray(post.tags_categorized)) {
-                for (const tag of post.tags_categorized) {
-                    if (tag) unionTags.add(String(tag).toLowerCase().trim());
-                }
-            } else if (typeof post.tags_categorized === 'object') {
-                for (const category of Object.values(post.tags_categorized)) {
-                    if (Array.isArray(category)) {
-                        for (const tag of category) {
-                            if (tag) unionTags.add(String(tag).toLowerCase().trim());
-                        }
-                    }
-                }
-            }
+        for (const tag of post.tags) {
+            unionTags.add(tag);
         }
     }
 
@@ -241,7 +229,6 @@ export const BlacklistManager = {
             const authString = btoa(`${this.e621User.username}:${this.e621User.apiKey}`);
             const appAuthor = import.meta.env.VITE_E621_APP_AUTHOR || 'anonymous';
             
-            // Fetch the authenticated user's profile which contains their blacklist
             const res = await fetch(`https://e621.net/users/${this.e621User.id}.json`, {
                 headers: {
                     'Authorization': `Basic ${authString}`,

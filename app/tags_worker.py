@@ -64,7 +64,9 @@ async def sync_daily_tags_export() -> None:
         decompressed = gzip.decompress(response.content)
         csv_reader = csv.DictReader(io.StringIO(decompressed.decode("utf-8")))
 
-        records: list[tuple[str, int, int]] = []
+        tag_names: list[str] = []
+        categories: list[int] = []
+        post_counts: list[int] = []
         lean_tags_data: dict[str, list[int]] = {}
 
         for row in csv_reader:
@@ -86,39 +88,28 @@ async def sync_daily_tags_export() -> None:
             if not tag_name:
                 continue
 
-            records.append((tag_name, cat_id, post_count))
+            tag_names.append(tag_name)
+            categories.append(cat_id)
+            post_counts.append(post_count)
 
             if cat_id != 6:
                 lean_tags_data[tag_name] = [cat_id, post_count]
 
-        # 1. Update DB Table
+        # 1. Update DB Table using unnest
         pool = get_db()
         async with pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
                     """
-                    CREATE TEMP TABLE staging_tags (
-                        tag_name TEXT PRIMARY KEY,
-                        category INT NOT NULL,
-                        post_count BIGINT NOT NULL
-                    ) ON COMMIT DROP;
-                """
-                )
-
-                await conn.copy_records_to_table(
-                    "staging_tags",
-                    records=records,
-                    columns=["tag_name", "category", "post_count"],
-                )
-
-                await conn.execute(
-                    """
                     INSERT INTO tags (tag_name, category, post_count)
-                    SELECT tag_name, category, post_count FROM staging_tags
+                    SELECT * FROM unnest($1::text[], $2::int[], $3::bigint[])
                     ON CONFLICT (tag_name) DO UPDATE SET
                         category = EXCLUDED.category,
                         post_count = EXCLUDED.post_count;
-                """
+                    """,
+                    tag_names,
+                    categories,
+                    post_counts,
                 )
 
         # 2. Write raw static MessagePack asset atomically
@@ -132,7 +123,7 @@ async def sync_daily_tags_export() -> None:
         write_precompressed_assets(OUTPUT_TAGS_MSGPACK, raw_bytes)
 
         logger.info(
-            f"Successfully synced {len(records)} DB tags and wrote pre-compressed assets for "
+            f"Successfully synced {len(tag_names)} DB tags and wrote pre-compressed assets for "
             f"{len(lean_tags_data)} active tags -> {OUTPUT_TAGS_MSGPACK}"
         )
     except Exception as e:

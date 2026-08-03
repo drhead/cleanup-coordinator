@@ -19,7 +19,7 @@ export function ReconciliationManager(cluster) {
         activeRating: null,
         originalRating: null,
         
-        lhsTagsCategorized: {},
+        lhsTags: [],
         originalLhsTagNames: new Set(),
         newTags: new Set(),
         removedLhsTags: [],
@@ -30,18 +30,27 @@ export function ReconciliationManager(cluster) {
         },
 
         getLocalClusterPost(postId) {
-            if (!cluster.posts || !postId) return null;
-            return cluster.posts.find(p => p.post_id === postId || p.id === postId) || null;
+            if (!cluster?.posts || !postId) return null;
+            const post = cluster.posts.find(p => p.post_id === postId || p.id === postId);
+            if (!post) return null;
+
+            const fileUrl = this.fetchedPostsMap.get(postId);
+            if (fileUrl) {
+                return {
+                    ...post,
+                    file_url: fileUrl,
+                    file: { ...(post.file || {}), url: fileUrl }
+                };
+            }
+            return post;
         },
 
         getEffectiveLhsRating() {
-            if (this.activeRating) return this.activeRating;
-            return this.lhsPost?.rating || this.lhsPost?.rating_letter || null;
+            return this.activeRating || this.lhsPost?.rating || this.lhsPost?.rating_letter || null;
         },
 
         getPostById(postId) {
-            if (!postId) return null;
-            return this.fetchedPostsMap.get(postId) || this.getLocalClusterPost(postId);
+            return postId ? this.getLocalClusterPost(postId) : null;
         },
 
         // Keeps selected post on the left (index 0); unselected graph uses default order
@@ -53,8 +62,7 @@ export function ReconciliationManager(cluster) {
         },
 
         get lhsPost() {
-            if (!this.currentGraph || !this.lhsPostId) return null;
-            return this.getPostById(this.lhsPostId);
+            return (this.currentGraph && this.lhsPostId) ? this.getPostById(this.lhsPostId) : null;
         },
 
         get rhsPosts() {
@@ -70,7 +78,7 @@ export function ReconciliationManager(cluster) {
         },
 
         get hasRatingConflict() {
-            if (!this.currentGraph || this.currentGraph.type !== 'duplicate') return false;
+            if (this.currentGraph?.type !== 'duplicate') return false;
             
             const graphPosts = this.currentGraph.postIds
                 .map(id => this.getPostById(id))
@@ -81,12 +89,19 @@ export function ReconciliationManager(cluster) {
         },
 
         getSortedTags(target) {
-            if (target && typeof target === 'object' && (target.post_id || target.id) && !target.GENERAL && !target.ARTIST && !target.COPYRIGHT && !target.SPECIES && !target.META) {
-                const postId = target.post_id || target.id;
-                const localPost = this.getLocalClusterPost(postId);
-                return TagManager.getSortedTags(localPost?.tags_categorized || {});
+            if (!target) return TagManager.getSortedTags([]);
+
+            if (target === this.lhsTags || Array.isArray(target)) {
+                return TagManager.getSortedTags(target);
             }
-            return TagManager.getSortedTags(target || {});
+
+            if (target.GENERAL || target.ARTIST || target.COPYRIGHT || target.SPECIES || target.META) {
+                return TagManager.getSortedTags(target);
+            }
+
+            const postId = target.post_id || target.id;
+            const localPost = this.getLocalClusterPost(postId);
+            return TagManager.getSortedTags(localPost?.tags || []);
         },
 
         getTagStyle(category) {
@@ -94,26 +109,32 @@ export function ReconciliationManager(cluster) {
         },
 
         isImpliedTag(tagName, target) {
-            if (target && typeof target === 'object' && (target.post_id || target.id) && !target.GENERAL && !target.ARTIST && !target.COPYRIGHT && !target.SPECIES && !target.META) {
-                const postId = target.post_id || target.id;
-                const localPost = this.getLocalClusterPost(postId);
-                return TagManager.isImpliedTag(tagName, localPost?.tags_categorized || {});
+            if (!target) return TagManager.isImpliedTag(tagName, []);
+
+            if (target === this.lhsTags || Array.isArray(target)) {
+                return TagManager.isImpliedTag(tagName, target);
             }
-            return TagManager.isImpliedTag(tagName, target || {});
+
+            if (target.GENERAL || target.ARTIST || target.COPYRIGHT || target.SPECIES || target.META) {
+                return TagManager.isImpliedTag(tagName, target);
+            }
+
+            const postId = target.post_id || target.id;
+            const localPost = this.getLocalClusterPost(postId);
+            return TagManager.isImpliedTag(tagName, localPost?.tags || []);
         },
 
         getImplicationChain(postId, tagName, target) {
-            const targetId = postId || (target && typeof target === 'object' && (target.post_id || target.id) ? (target.post_id || target.id) : null);
+            const targetId = postId || target?.post_id || target?.id || null;
             
-            let tags;
+            let tags = [];
             if (targetId && targetId === this.lhsPostId) {
-                // Force dynamic LHS tags state (includes added & removed tags)
-                tags = this.lhsTagsCategorized;
-            } else if (target && typeof target === 'object' && (target.GENERAL || target.ARTIST || target.COPYRIGHT || target.SPECIES || target.META)) {
+                tags = this.lhsTags;
+            } else if (Array.isArray(target)) {
                 tags = target;
-            } else {
-                const localPost = targetId ? this.getLocalClusterPost(targetId) : null;
-                tags = localPost?.tags_categorized || {};
+            } else if (targetId) {
+                const localPost = this.getLocalClusterPost(targetId);
+                tags = localPost?.tags || [];
             }
 
             return TagManager.getImplicationChain(targetId, tagName, tags);
@@ -133,10 +154,7 @@ export function ReconciliationManager(cluster) {
         },
 
         isTagOnLhs(tagName) {
-            for (const catList of Object.values(this.lhsTagsCategorized)) {
-                if (Array.isArray(catList) && catList.includes(tagName)) return true;
-            }
-            return false;
+            return this.lhsTags.includes(tagName);
         },
 
         getAllImpliedTags(initialTag) {
@@ -145,7 +163,7 @@ export function ReconciliationManager(cluster) {
 
             while (queue.length > 0) {
                 const current = queue.shift();
-                const directImplied = TagManager.implications[current]?.implies || [];
+                const directImplied = TagManager.implications?.[current]?.implies || [];
                 
                 for (const imp of directImplied) {
                     if (!result.has(imp)) {
@@ -169,12 +187,7 @@ export function ReconciliationManager(cluster) {
                     await TagManager.initTags();
                 }
 
-                if (cluster._fetchedPosts && cluster._fetchedPosts.size > 0) {
-                    this.fetchedPostsMap = new Map(cluster._fetchedPosts);
-                } else {
-                    await this.fetchClusterPosts();
-                }
-
+                await this.fetchClusterPosts();
                 this.buildGraphsFromCluster();
 
                 if (this.graphs.length === 0) {
@@ -195,7 +208,7 @@ export function ReconciliationManager(cluster) {
         async fetchClusterPosts() {
             if (!cluster.posts || cluster.posts.length === 0) return;
 
-            const postIds = cluster.posts.map(p => p.post_id).join(',');
+            const postIds = cluster.posts.map(p => p.post_id || p.id).join(',');
             const appAuthor = import.meta.env.VITE_E621_APP_AUTHOR || 'anonymous';
             const headers = {
                 'User-Agent': `E621CleanupCoordinator/1.0 (by ${appAuthor})`
@@ -211,7 +224,12 @@ export function ReconciliationManager(cluster) {
 
             const data = await res.json();
             this.fetchedPostsMap.clear();
-            (data.posts || []).forEach(p => this.fetchedPostsMap.set(p.id, p));
+            (data.posts || []).forEach(p => {
+                const fileUrl = p.file?.url || p.file_url || '';
+                if (fileUrl) {
+                    this.fetchedPostsMap.set(p.id, fileUrl);
+                }
+            });
         },
 
         buildGraphsFromCluster() {
@@ -219,7 +237,7 @@ export function ReconciliationManager(cluster) {
                 this.graphs = [{
                     id: 1,
                     type: cluster.default_type || 'duplicate',
-                    postIds: cluster.posts.map(p => p.post_id)
+                    postIds: cluster.posts.map(p => p.post_id || p.id)
                 }];
                 return;
             }
@@ -238,8 +256,7 @@ export function ReconciliationManager(cluster) {
         },
 
         setupCurrentGraph() {
-            const graph = this.currentGraph;
-            if (!graph) return;
+            if (!this.currentGraph) return;
 
             this.selectedSuperiorId = null;
             this.selectedParentId = null;
@@ -260,37 +277,22 @@ export function ReconciliationManager(cluster) {
         },
 
         syncLhsState() {
+            this.activeRating = null;
+            this.originalRating = null;
+            this.newTags = new Set();
+            this.removedLhsTags = [];
+
             if (!this.lhsPostId) {
-                this.activeRating = null;
-                this.originalRating = null;
-                this.lhsTagsCategorized = {};
+                this.lhsTags = [];
                 this.originalLhsTagNames = new Set();
-                this.newTags = new Set();
-                this.removedLhsTags = [];
                 return;
             }
 
-            const localPost = this.getLocalClusterPost(this.lhsPostId);
-            const rawPost = this.lhsPost;
+            const post = this.getLocalClusterPost(this.lhsPostId);
+            const rawTags = post?.tags || [];
 
-            if (rawPost) {
-                this.activeRating = null;
-                this.originalRating = null;
-            }
-
-            const baseDict = localPost?.tags_categorized || {};
-            this.lhsTagsCategorized = {};
-            this.originalLhsTagNames = new Set();
-
-            for (const [cat, tagList] of Object.entries(baseDict)) {
-                const catKey = cat.toUpperCase();
-                const list = Array.isArray(tagList) ? [...tagList] : [];
-                this.lhsTagsCategorized[catKey] = list;
-                list.forEach(t => this.originalLhsTagNames.add(t));
-            }
-
-            this.newTags = new Set();
-            this.removedLhsTags = [];
+            this.lhsTags = [...rawTags];
+            this.originalLhsTagNames = new Set(rawTags);
         },
 
         setRating(r) {
@@ -298,25 +300,19 @@ export function ReconciliationManager(cluster) {
         },
 
         addTagWithImplications(tagName, category = 'GENERAL') {
-            const catKey = category.toUpperCase();
             const fullImpliedChain = this.getAllImpliedTags(tagName);
             const tagsToAdd = [tagName, ...fullImpliedChain];
 
             tagsToAdd.forEach(t => {
-                const targetCat = (TagManager.implications[t]?.category || catKey).toUpperCase();
-                if (!this.lhsTagsCategorized[targetCat]) {
-                    this.lhsTagsCategorized[targetCat] = [];
-                }
-                
-                if (!this.lhsTagsCategorized[targetCat].includes(t)) {
-                    this.lhsTagsCategorized[targetCat].push(t);
+                if (!this.lhsTags.includes(t)) {
+                    this.lhsTags.push(t);
                     
                     if (!this.originalLhsTagNames.has(t)) {
                         this.newTags.add(t);
                     }
                 }
 
-                const remIdx = this.removedLhsTags.findIndex(rt => rt.name === t);
+                const remIdx = this.removedLhsTags.findIndex(rt => (typeof rt === 'string' ? rt === t : rt.name === t));
                 if (remIdx !== -1) {
                     this.removedLhsTags.splice(remIdx, 1);
                 }
@@ -328,31 +324,30 @@ export function ReconciliationManager(cluster) {
         },
 
         removeTagWithImplications(tagObj) {
-            const tagName = tagObj.name;
-            const chain = TagManager.getImplicationChain(this.lhsPostId, tagName, this.lhsTagsCategorized);
+            const tagName = typeof tagObj === 'string' ? tagObj : tagObj.name;
+            const chain = TagManager.getImplicationChain(this.lhsPostId, tagName, this.lhsTags);
 
             const toRemove = new Set([tagName]);
             if (chain) {
-                chain.directImplicators.forEach(t => toRemove.add(t));
-                chain.indirectImplicators.forEach(t => toRemove.add(t));
+                chain.directImplicators?.forEach(t => toRemove.add(t));
+                chain.indirectImplicators?.forEach(t => toRemove.add(t));
             }
 
-            for (const [cat, tagList] of Object.entries(this.lhsTagsCategorized)) {
-                this.lhsTagsCategorized[cat] = tagList.filter(t => {
-                    if (toRemove.has(t)) {
-                        if (this.originalLhsTagNames.has(t) && !this.removedLhsTags.some(rt => rt.name === t)) {
-                            this.removedLhsTags.push({ name: t, category: cat });
-                        }
-                        this.newTags.delete(t);
-                        return false;
+            this.lhsTags = this.lhsTags.filter(t => {
+                if (toRemove.has(t)) {
+                    if (this.originalLhsTagNames.has(t) && !this.removedLhsTags.includes(t)) {
+                        this.removedLhsTags.push(t);
                     }
-                    return true;
-                });
-            }
+                    this.newTags.delete(t);
+                    return false;
+                }
+                return true;
+            });
         },
 
         restoreTag(tagObj) {
-            this.addTagWithImplications(tagObj.name, tagObj.category);
+            const tagName = typeof tagObj === 'string' ? tagObj : tagObj.name;
+            this.addTagWithImplications(tagName);
         },
 
         addCustomTag() {
@@ -381,10 +376,14 @@ export function ReconciliationManager(cluster) {
     };
 }
 
-if (window.Alpine) {
-    window.Alpine.data('ReconciliationManager', ReconciliationManager);
-} else {
-    document.addEventListener('alpine:init', () => {
+const registerAlpineData = () => {
+    if (window.Alpine) {
         window.Alpine.data('ReconciliationManager', ReconciliationManager);
-    });
+    }
+};
+
+if (window.Alpine) {
+    registerAlpineData();
+} else {
+    document.addEventListener('alpine:init', registerAlpineData);
 }

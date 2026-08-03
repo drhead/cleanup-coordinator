@@ -8,6 +8,17 @@ export const BatchManager = {
         this.reloadBatches();
     },
 
+    /**
+     * Prepares cluster posts for blacklisting, sorting, and tag caching.
+     */
+    processCluster(c, evaluator, forceReset = false) {
+        applyBlacklistToCluster(c, evaluator);
+        
+        if (forceReset || c.collapsed === undefined) {
+            c.collapsed = c.is_resolved || c.is_blacklisted;
+        }
+    },
+
     async reloadBatches(silent = false, refreshedClusterId = null, forceCollapseReset = false) {
         if (!this.activeProject) return;
 
@@ -29,18 +40,11 @@ export const BatchManager = {
 
             const evaluator = new E621BlacklistEvaluator(this.blacklistText || '');
 
-            const processCluster = (c, forceReset = false) => {
-                applyBlacklistToCluster(c, evaluator);
-                if (forceReset || c.collapsed === undefined) {
-                    c.collapsed = c.is_resolved || c.is_blacklisted;
-                }
-            };
-
             if (this.batches.length === 0) {
                 incomingBatches.forEach(b => {
                     if (b.clusters) {
                         b.clusters.forEach(c => {
-                            processCluster(c);
+                            this.processCluster(c, evaluator);
                             c.isRefreshing = false;
                         });
                     } else {
@@ -54,7 +58,7 @@ export const BatchManager = {
                     if (!existingBatch) {
                         if (newBatch.clusters) {
                             newBatch.clusters.forEach(c => {
-                                processCluster(c);
+                                this.processCluster(c, evaluator);
                                 c.isRefreshing = false;
                             });
                         } else {
@@ -86,30 +90,39 @@ export const BatchManager = {
                                 existingCluster.is_resolved = newCluster.is_resolved;
                                 existingCluster.manual_resolution = newCluster.manual_resolution;
 
-                                // Reconcile posts in-place to retain object identity & TagManager cache
+                                // Reconcile posts in-place to retain object identity & TagManager cache where possible
                                 if (refreshedClusterId === existingCluster.cluster_id) {
-                                    existingCluster.posts = newCluster.posts;
+                                    existingCluster.posts = newCluster.posts || [];
                                 } else if (newCluster.posts && Array.isArray(newCluster.posts)) {
                                     const existingPostsMap = new Map((existingCluster.posts || []).map(p => [p.post_id, p]));
                                     
                                     existingCluster.posts = newCluster.posts.map(newPost => {
                                         const existingPost = existingPostsMap.get(newPost.post_id);
+                                        
                                         if (existingPost) {
-                                            // Updates properties while preserving existingPost._tagsSignature & existingPost._sortedTags
+                                            // Check if raw tags modified during polling
+                                            const tagsChanged = JSON.stringify(existingPost.tags) !== JSON.stringify(newPost.tags);
+
                                             Object.assign(existingPost, newPost);
+
+                                            // Invalidate TagManager cache if tags actually changed
+                                            if (tagsChanged) {
+                                                delete existingPost._tagsSignature;
+                                                delete existingPost._sortedTags;
+                                            }
                                             return existingPost;
                                         }
                                         return newPost;
                                     });
                                 }
 
-                                processCluster(existingCluster, forceCollapseReset);
+                                this.processCluster(existingCluster, evaluator, forceCollapseReset);
 
                                 if (refreshedClusterId && existingCluster.cluster_id === refreshedClusterId) {
                                     existingCluster.isRefreshing = false;
                                 }
                             } else {
-                                processCluster(newCluster);
+                                this.processCluster(newCluster, evaluator);
                                 newCluster.isRefreshing = false;
                                 existingBatch.clusters.push(newCluster);
                             }

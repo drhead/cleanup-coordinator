@@ -11,7 +11,6 @@ import msgspec
 import asyncpg
 
 from app.db import get_db
-from app.structs import ClusterPost, TagsCategorized
 from app.leases import clear_expired_leases, get_client_ip
 
 router = APIRouter()
@@ -35,6 +34,19 @@ async def get_projects() -> dict[str, list[dict[str, Any]]]:
         )
         return {"projects": [dict(r) for r in rows]}
 
+
+class ClusterPost(msgspec.Struct, kw_only=True):
+    post_id: int
+    cluster_id: int
+    rating: str = "s"
+    pool_ids: list[int] = msgspec.field(default_factory=list[int])
+    tags: list[str] = msgspec.field(default_factory=list[str])
+    is_flagged: bool = False
+    is_deleted: bool = False
+    image_width: int | None = None
+    image_height: int | None = None
+    image_format: str | None = None
+    image_quality: int | None = None
 
 class Cluster(msgspec.Struct, kw_only=True):
     cluster_id: int
@@ -62,21 +74,16 @@ class ProjectBatchesResponse(msgspec.Struct, kw_only=True):
     batches: list[Batch]
 
 
-tags_decoder = msgspec.json.Decoder(TagsCategorized)
 msgpack_encoder = msgspec.msgpack.Encoder()
 
 
 def parse_cluster_post(row: asyncpg.Record) -> ClusterPost:
-    raw_json = row["tags_json"] or "{}"
-
-    tags = tags_decoder.decode(raw_json)
-
     return ClusterPost(
         post_id=row["post_id"],
         cluster_id=row["cluster_id"],
         rating=row["rating"] or "s",
         pool_ids=row["pool_ids"] or [],
-        tags_categorized=tags,
+        tags=row["tags"] or [],
         is_flagged=bool(row["is_flagged"]),
         is_deleted=bool(row["is_deleted"]),
         image_width=row["image_width"],
@@ -153,7 +160,7 @@ async def get_project_batches(
             """
             SELECT c.batch_id, c.cluster_id, c.cluster_index, c.note, c.is_resolved, 
                    c.manual_resolution, cp.post_id, cp.parent_id, cp.pool_ids, 
-                   cp.rating, cp.tags_json,
+                   cp.rating, cp.tags,
                    cp.image_width, cp.image_height, cp.image_format, cp.image_quality,
                    COALESCE(fc.active_deletion_count > 0, FALSE) AS is_deleted, 
                    COALESCE(fc.active_flag_count > 0, FALSE) AS is_flagged
