@@ -2,6 +2,8 @@
 
 from typing import Any
 from collections import defaultdict
+import gzip
+import brotli
 
 from fastapi import APIRouter, Request, Response
 import msgspec
@@ -62,6 +64,7 @@ class ProjectBatchesResponse(msgspec.Struct, kw_only=True):
 tags_decoder = msgspec.json.Decoder(TagsCategorized)
 msgpack_encoder = msgspec.msgpack.Encoder()
 
+
 def parse_cluster_post(row: asyncpg.Record) -> ClusterPost:
     raw_json = row["tags_json"] or "{}"
 
@@ -80,6 +83,16 @@ def parse_cluster_post(row: asyncpg.Record) -> ClusterPost:
         image_format=row["image_format"],
         image_quality=row["image_quality"],
     )
+
+
+def parse_accept_encoding(header: str) -> set[str]:
+    """Parse Accept-Encoding header into a clean set of supported encodings."""
+    encodings: set[str] = set()
+    for segment in header.split(","):
+        token = segment.split(";")[0].strip().lower()
+        if token:
+            encodings.add(token)
+    return encodings
 
 
 @router.get("/api/v1/projects/{project_id}/batches")
@@ -108,10 +121,11 @@ async def get_project_batches(
         )
 
         if not batches_rows:
+            raw_payload = msgpack_encoder.encode(
+                ProjectBatchesResponse(project_id=project_id, batches=[])
+            )
             return Response(
-                content=msgpack_encoder.encode(
-                    ProjectBatchesResponse(project_id=project_id, batches=[])
-                ),
+                content=raw_payload,
                 media_type="application/msgpack",
             )
 
@@ -196,7 +210,30 @@ async def get_project_batches(
     response_payload = ProjectBatchesResponse(
         project_id=project_id, batches=batch_list
     )
+    raw_bytes = msgpack_encoder.encode(response_payload)
+
+    # 5. Compress dynamically based on Accept-Encoding
+    encodings = parse_accept_encoding(request.headers.get("accept-encoding", ""))
+    media_type = "application/msgpack"
+
+    if "br" in encodings:
+        compressed = brotli.compress(raw_bytes, quality=3)
+        return Response(
+            content=compressed,
+            media_type=media_type,
+            headers={"Content-Encoding": "br", "Vary": "Accept-Encoding"},
+        )
+
+    if "gzip" in encodings:
+        compressed = gzip.compress(raw_bytes, compresslevel=6)
+        return Response(
+            content=compressed,
+            media_type=media_type,
+            headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"},
+        )
+
     return Response(
-        content=msgpack_encoder.encode(response_payload),
-        media_type="application/msgpack",
+        content=raw_bytes,
+        media_type=media_type,
+        headers={"Vary": "Accept-Encoding"},
     )

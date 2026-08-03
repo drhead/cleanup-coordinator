@@ -42,9 +42,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# Static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/components", StaticFiles(directory="templates/components"), name="components")
+
 
 # Middleware
 @app.middleware("http")
@@ -65,3 +63,7 @@ app.include_router(projects.router)
 app.include_router(batches.router)
 app.include_router(leases.router)
 app.include_router(static_data.router)
+
+# Static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/components", StaticFiles(directory="templates/components"), name="components")

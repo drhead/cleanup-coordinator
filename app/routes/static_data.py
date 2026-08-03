@@ -1,53 +1,55 @@
-"""Router for serving static MessagePack data using pre-compressed disk assets."""
+"""Router for serving static MessagePack data compressed in-memory."""
 
+from functools import lru_cache
+import gzip
 from pathlib import Path
+
 from fastapi import APIRouter, Request, Response
+import brotli
 
 router = APIRouter()
 
 BASE_DATA_PATH = Path("./static/data/tag_implications.msgpack")
-BR_DATA_PATH = Path("./static/data/tag_implications.msgpack.br")
-GZ_DATA_PATH = Path("./static/data/tag_implications.msgpack.gz")
 
-_cached_br: bytes | None = None
-_cached_gz: bytes | None = None
-_cached_raw: bytes | None = None
-
-
-def get_br_bytes() -> bytes:
-    global _cached_br
-    if _cached_br is None:
-        _cached_br = BR_DATA_PATH.read_bytes()
-    return _cached_br
-
-
-def get_gz_bytes() -> bytes:
-    global _cached_gz
-    if _cached_gz is None:
-        _cached_gz = GZ_DATA_PATH.read_bytes()
-    return _cached_gz
-
-
+@lru_cache(maxsize=1)
 def get_raw_bytes() -> bytes:
-    global _cached_raw
-    if _cached_raw is None:
-        _cached_raw = BASE_DATA_PATH.read_bytes()
-    return _cached_raw
+    return BASE_DATA_PATH.read_bytes()
+
+
+@lru_cache(maxsize=1)
+def get_gz_bytes() -> bytes:
+    return gzip.compress(get_raw_bytes(), compresslevel=9)
+
+
+@lru_cache(maxsize=1)
+def get_br_bytes() -> bytes:
+    return brotli.compress(get_raw_bytes())
+
+
+def parse_accept_encoding(header: str) -> set[str]:
+    """Parse Accept-Encoding header into a clean set of supported encodings."""
+    encodings: set[str] = set()
+    for segment in header.split(","):
+        token = segment.split(";")[0].strip().lower()
+        if token:
+            encodings.add(token)
+    return encodings
 
 
 @router.get("/static/data/tag_implications.msgpack")
 async def get_tag_implications(request: Request) -> Response:
-    accept_encoding = request.headers.get("Accept-Encoding", "").lower()
+    raw_header = request.headers.get("accept-encoding", "")
+    encodings = parse_accept_encoding(raw_header)
     media_type = "application/msgpack"
 
-    if "br" in accept_encoding:
+    if "br" in encodings:
         return Response(
             content=get_br_bytes(),
             media_type=media_type,
             headers={"Content-Encoding": "br", "Vary": "Accept-Encoding"},
         )
 
-    if "gzip" in accept_encoding:
+    if "gzip" in encodings:
         return Response(
             content=get_gz_bytes(),
             media_type=media_type,

@@ -1,7 +1,6 @@
 import asyncio
 import csv
 import gzip
-import brotli
 import io
 import msgspec
 import logging
@@ -17,7 +16,6 @@ logger = logging.getLogger("tags_worker")
 TAGS_EXPORT_URL = "https://static1.e621.net/data/db_export/tags.csv.gz"
 IMPLICATIONS_EXPORT_URL = "https://static1.e621.net/data/db_export/tag_implications.csv.gz"
 
-# Target path in your local static directory
 OUTPUT_IMPLICATIONS_MSGPACK = Path("static/data/tag_implications.msgpack")
 OUTPUT_IMPLICATIONS_MSGPACK.parent.mkdir(parents=True, exist_ok=True)
 
@@ -125,32 +123,12 @@ async def sync_daily_implications_export() -> None:
             ensure_tag_entry(consequent)["implied_by"].append(antecedent)
             processed_count += 1
 
-        # Temp paths for atomic swaps
         temp_msgpack_path = OUTPUT_IMPLICATIONS_MSGPACK.with_suffix(".msgpack.tmp")
-        temp_br_path = OUTPUT_IMPLICATIONS_MSGPACK.with_suffix(".msgpack.br.tmp")
-        temp_gz_path = OUTPUT_IMPLICATIONS_MSGPACK.with_suffix(".msgpack.gz.tmp")
 
-        # Encode to MessagePack
-        encoded_data = msgspec.msgpack.encode(implications_graph)
-
-        # Write raw
         with temp_msgpack_path.open("wb") as f:
-            f.write(encoded_data)
+            f.write(msgspec.msgpack.encode(implications_graph))
 
-        # Compress brotli
-        br_data = brotli.compress(encoded_data, quality=11)
-        with temp_br_path.open("wb") as f:
-            f.write(br_data)
-
-        # Compress gzip
-        gz_data = gzip.compress(encoded_data, compresslevel=9)
-        with temp_gz_path.open("wb") as f:
-            f.write(gz_data)
-
-        # Atomic replacements for all three
         temp_msgpack_path.replace(OUTPUT_IMPLICATIONS_MSGPACK)
-        temp_br_path.replace(OUTPUT_IMPLICATIONS_MSGPACK.with_suffix(".msgpack.br"))
-        temp_gz_path.replace(OUTPUT_IMPLICATIONS_MSGPACK.with_suffix(".msgpack.gz"))
 
         logger.info(
             f"Successfully processed {processed_count} active implications across "
