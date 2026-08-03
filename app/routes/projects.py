@@ -1,7 +1,7 @@
 """Projects router."""
 
 import hashlib
-from typing import Any
+from typing import Any, Iterable, cast
 from collections import defaultdict
 import gzip
 import brotli
@@ -95,6 +95,24 @@ def parse_accept_encoding(header: str) -> set[str]:
             encodings.add(token)
     return encodings
 
+def _hashable_record(row: asyncpg.Record) -> tuple[Any, ...]:
+    """Converts a Record into a hashable tuple, replacing lists with tuples."""
+    vals: list[Any] = []
+    for v in row.values():
+        if isinstance(v, list):
+            vals.append(tuple(cast(Iterable[Any], v)))
+        else:
+            vals.append(v)
+    return tuple(vals)
+
+
+def compute_rows_hash(*rows_lists: list[asyncpg.Record]) -> int:
+    """Recursively converts lists of Records into hashable tuples and returns their C hash."""
+    all_tuples = tuple(
+        tuple(_hashable_record(row) for row in rows)
+        for rows in rows_lists
+    )
+    return hash(all_tuples)
 
 @router.get("/api/v1/projects/{project_id}/batches")
 async def get_project_batches(
@@ -153,10 +171,9 @@ async def get_project_batches(
     # and avoid sending the payload
     etag_hasher = hashlib.blake2b(digest_size=16)
     etag_hasher.update(client_ip.encode("utf-8"))
-
-    etag_hasher.update(str(batches_rows).encode("utf-8"))
-    etag_hasher.update(str(flat_rows).encode("utf-8"))
-    
+    data_hash = compute_rows_hash(batches_rows, flat_rows)
+    etag_hasher.update(data_hash.to_bytes(8, "little", signed=True))
+        
     etag = f'"{etag_hasher.hexdigest()}"'
 
     # Check against incoming If-None-Match header
