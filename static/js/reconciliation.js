@@ -1,27 +1,62 @@
-import { TagManager } from './tags.js';
+// @ts-check
+import Alpine from 'alpinejs';
+/** @type {any} */ (window).Alpine = Alpine;
 
+import { fetchPostFileUrls } from './e621_api.js';
+import { showToast } from './toasts.js';
+import {
+    initTags,
+    getSortedTags,
+    isImpliedTag,
+    getImplicationChain,
+    getTagStyle,
+    getRatingBadgeClass,
+    getRatingLabel
+} from './tags.js';
+
+/** @type {any} */
 let globalActiveReconciliation = null;
 
+/**
+ * Alpine component factory for tag reconciliation and classification graphs.
+ * @param {Cluster} cluster
+ */
 export function ReconciliationManager(cluster) {
     return {
         isActive: false,
         isLoading: false,
 
+        /** @type {AppState} */
+        // @ts-expect-error
+        appStateRef: null,
+
+        /** @type {Map<number, string>} */
         fetchedPostsMap: new Map(),
+
+        /** @type {Array<{ id: number, type: string, postIds: number[] }>} */
         graphs: [],
         activeGraphIndex: 0,
 
+        /** @type {number|null} */
         selectedSuperiorId: null,
+        /** @type {number|null} */
         selectedParentId: null,
         customParentId: '',
+        /** @type {number|null} */
         lhsPostId: null,
 
+        /** @type {string|null} */
         activeRating: null,
+        /** @type {string|null} */
         originalRating: null,
-        
+
+        /** @type {string[]} */
         lhsTags: [],
+        /** @type {Set<string>} */
         originalLhsTagNames: new Set(),
+        /** @type {Set<string>} */
         newTags: new Set(),
+        /** @type {Array<string | { name: string }>} */
         removedLhsTags: [],
         tagInput: '',
 
@@ -29,31 +64,36 @@ export function ReconciliationManager(cluster) {
             return this.graphs[this.activeGraphIndex] || null;
         },
 
+        /**
+         * @param {number} postId
+         * @returns {ClusterPost | null}
+         */
         getLocalClusterPost(postId) {
             if (!cluster?.posts || !postId) return null;
-            const post = cluster.posts.find(p => p.post_id === postId || p.id === postId);
+            const post = cluster.posts.find(p => p.post_id === postId);
             if (!post) return null;
 
-            const fileUrl = this.fetchedPostsMap.get(postId);
-            if (fileUrl) {
+            const fetchedUrl = this.fetchedPostsMap.get(postId);
+            if (fetchedUrl) {
                 return {
                     ...post,
-                    file_url: fileUrl,
-                    file: { ...(post.file || {}), url: fileUrl }
+                    fileUrl: fetchedUrl
                 };
             }
             return post;
         },
 
         getEffectiveLhsRating() {
-            return this.activeRating || this.lhsPost?.rating || this.lhsPost?.rating_letter || null;
+            return this.activeRating || this.lhsPost?.rating || null;
         },
 
+        /**
+         * @param {number} postId
+         */
         getPostById(postId) {
             return postId ? this.getLocalClusterPost(postId) : null;
         },
 
-        // Keeps selected post on the left (index 0); unselected graph uses default order
         get orderedPostIds() {
             if (!this.currentGraph) return [];
             if (!this.lhsPostId) return this.currentGraph.postIds;
@@ -79,92 +119,123 @@ export function ReconciliationManager(cluster) {
 
         get hasRatingConflict() {
             if (this.currentGraph?.type !== 'duplicate') return false;
-            
+
             const graphPosts = this.currentGraph.postIds
                 .map(id => this.getPostById(id))
                 .filter(Boolean);
-            
-            const initialRatings = graphPosts.map(p => p.rating || p.rating_letter);
+
+            const initialRatings = graphPosts.map(p => p?.rating);
             return new Set(initialRatings).size > 1 && !this.isRatingChanged;
         },
 
+        /**
+         * Helper to safely extract a flat array of tag strings from a target (array, post, or object).
+         * @param {any} target
+         * @returns {{ flatTags: string[], post: ClusterPost | null }}
+         */
+        extractFlatTagsAndPost(target) {
+            if (!target) return { flatTags: [], post: null };
+
+            if (Array.isArray(target)) {
+                return { flatTags: target, post: null };
+            }
+
+            if (target === this.lhsTags) {
+                return { flatTags: this.lhsTags, post: null };
+            }
+
+            const postId = target.post_id;
+            const localPost = postId ? this.getLocalClusterPost(postId) : null;
+            const rawTags = localPost?.tags || target.tags || [];
+
+            let flatTags = [];
+            if (Array.isArray(rawTags)) {
+                flatTags = rawTags;
+            } else if (rawTags && typeof rawTags === 'object') {
+                flatTags = Object.values(rawTags).flat();
+            }
+
+            return { flatTags, post: localPost || null };
+        },
+
+        /**
+         * @param {any} target
+         */
         getSortedTags(target) {
-            if (!target) return TagManager.getSortedTags([]);
-
-            if (target === this.lhsTags || Array.isArray(target)) {
-                return TagManager.getSortedTags(target);
-            }
-
-            if (target.GENERAL || target.ARTIST || target.COPYRIGHT || target.SPECIES || target.META) {
-                return TagManager.getSortedTags(target);
-            }
-
-            const postId = target.post_id || target.id;
-            const localPost = this.getLocalClusterPost(postId);
-            return TagManager.getSortedTags(localPost?.tags || []);
+            const { flatTags, post } = this.extractFlatTagsAndPost(target);
+            return getSortedTags(/** @type {AppState} */ (this.appStateRef), flatTags, post);
         },
 
-        getTagStyle(category) {
-            return TagManager.getTagStyle(category);
-        },
+        getTagStyle,
+        getRatingBadgeClass,
+        getRatingLabel,
 
+        /**
+         * @param {string} tagName
+         * @param {any} target
+         */
         isImpliedTag(tagName, target) {
-            if (!target) return TagManager.isImpliedTag(tagName, []);
-
-            if (target === this.lhsTags || Array.isArray(target)) {
-                return TagManager.isImpliedTag(tagName, target);
-            }
-
-            if (target.GENERAL || target.ARTIST || target.COPYRIGHT || target.SPECIES || target.META) {
-                return TagManager.isImpliedTag(tagName, target);
-            }
-
-            const postId = target.post_id || target.id;
-            const localPost = this.getLocalClusterPost(postId);
-            return TagManager.isImpliedTag(tagName, localPost?.tags || []);
+            const { flatTags } = this.extractFlatTagsAndPost(target);
+            return isImpliedTag(/** @type {AppState} */ (this.appStateRef), tagName, flatTags);
         },
 
+        /**
+         * @param {number|null} postId
+         * @param {string} tagName
+         * @param {any} target
+         */
         getImplicationChain(postId, tagName, target) {
-            const targetId = postId || target?.post_id || target?.id || null;
-            
-            let tags = [];
+            const targetId = postId || target?.post_id || null;
+            let flatTags = [];
+
             if (targetId && targetId === this.lhsPostId) {
-                tags = this.lhsTags;
-            } else if (Array.isArray(target)) {
-                tags = target;
-            } else if (targetId) {
-                const localPost = this.getLocalClusterPost(targetId);
-                tags = localPost?.tags || [];
+                flatTags = this.lhsTags;
+            } else {
+                flatTags = this.extractFlatTagsAndPost(target).flatTags;
             }
 
-            return TagManager.getImplicationChain(targetId, tagName, tags);
+            return getImplicationChain(/** @type {AppState} */ (this.appStateRef), targetId, tagName, flatTags);
         },
 
+        /**
+         * @param {ClusterPost|null} post
+         */
         getPostImageUrl(post) {
             if (!post) return '';
-            return post.file?.url || post.sample?.url || post.preview?.url || 
-                   post.file_url || post.sample_url || post.preview_url || '';
+            return (post.post_id ? this.fetchedPostsMap.get(post.post_id) : null) || post.fileUrl || '';
         },
 
+        /**
+         * @param {ClusterPost|null} post
+         */
         getPostDimensions(post) {
             if (!post) return 'N/A';
-            const w = post.file?.width || post.image_width || post.width;
-            const h = post.file?.height || post.image_height || post.height;
+            const w = post.image_width;
+            const h = post.image_height;
             return (w && h) ? `${w}×${h}` : 'N/A';
         },
 
+        /**
+         * @param {string} tagName
+         */
         isTagOnLhs(tagName) {
             return this.lhsTags.includes(tagName);
         },
 
+        /**
+         * @param {string} initialTag
+         */
         getAllImpliedTags(initialTag) {
             const result = new Set();
             const queue = [initialTag];
+            const state = /** @type {AppState} */ (this.appStateRef);
+            const implications = state?.implications || {};
 
             while (queue.length > 0) {
                 const current = queue.shift();
-                const directImplied = TagManager.implications?.[current]?.implies || [];
-                
+                if (!current) continue;
+                const directImplied = implications[current]?.implies || [];
+
                 for (const imp of directImplied) {
                     if (!result.has(imp)) {
                         result.add(imp);
@@ -175,7 +246,14 @@ export function ReconciliationManager(cluster) {
             return Array.from(result);
         },
 
-        async startReconciliation() {
+        /**
+         * @param {AppState} appState
+         */
+        async startReconciliation(appState) {
+            if (appState) {
+                this.appStateRef = appState;
+            }
+
             if (globalActiveReconciliation && globalActiveReconciliation !== this) {
                 globalActiveReconciliation.closeReconciliation();
             }
@@ -183,8 +261,8 @@ export function ReconciliationManager(cluster) {
             this.isLoading = true;
 
             try {
-                if (!TagManager.hasImplications) {
-                    await TagManager.initTags();
+                if (this.appStateRef) {
+                    await initTags(this.appStateRef);
                 }
 
                 await this.fetchClusterPosts();
@@ -198,7 +276,9 @@ export function ReconciliationManager(cluster) {
                 this.setupCurrentGraph();
                 this.isActive = true;
             } catch (err) {
-                console.error('Reconciliation error:', err);
+                console.error('[ReconciliationManager] Initiation error:', err);
+                const message = err instanceof Error ? err.message : 'Unknown error';
+                if (this.appStateRef) showToast(this.appStateRef, `Reconciliation error: ${message}`, 'error');
                 this.closeReconciliation();
             } finally {
                 this.isLoading = false;
@@ -208,28 +288,17 @@ export function ReconciliationManager(cluster) {
         async fetchClusterPosts() {
             if (!cluster.posts || cluster.posts.length === 0) return;
 
-            const postIds = cluster.posts.map(p => p.post_id || p.id).join(',');
-            const appAuthor = import.meta.env.VITE_E621_APP_AUTHOR || 'anonymous';
-            const headers = {
-                'User-Agent': `E621CleanupCoordinator/1.0 (by ${appAuthor})`
-            };
-
-            if (this.e621User) {
-                const authString = btoa(`${this.e621User.username}:${this.e621User.apiKey}`);
-                headers['Authorization'] = `Basic ${authString}`;
+            if (cluster._fetchedPosts && cluster._fetchedPosts.size > 0) {
+                this.fetchedPostsMap = new Map(cluster._fetchedPosts);
+                return;
             }
 
-            const res = await fetch(`https://e621.net/posts.json?tags=id:${postIds}`, { headers });
-            if (!res.ok) throw new Error(`e621 API returned HTTP ${res.status}`);
-
-            const data = await res.json();
-            this.fetchedPostsMap.clear();
-            (data.posts || []).forEach(p => {
-                const fileUrl = p.file?.url || p.file_url || '';
-                if (fileUrl) {
-                    this.fetchedPostsMap.set(p.id, fileUrl);
-                }
-            });
+            const postIds = cluster.posts.map(p => p.post_id);
+            try {
+                this.fetchedPostsMap = await fetchPostFileUrls(postIds, this.appStateRef?.e621User || null);
+            } catch (err) {
+                console.error('[ReconciliationManager] Failed to fetch post file URLs:', err);
+            }
         },
 
         buildGraphsFromCluster() {
@@ -237,7 +306,7 @@ export function ReconciliationManager(cluster) {
                 this.graphs = [{
                     id: 1,
                     type: cluster.default_type || 'duplicate',
-                    postIds: cluster.posts.map(p => p.post_id || p.id)
+                    postIds: cluster.posts.map(p => p.post_id)
                 }];
                 return;
             }
@@ -245,10 +314,13 @@ export function ReconciliationManager(cluster) {
             this.graphs = cluster.pairs.map((pair, idx) => ({
                 id: idx + 1,
                 type: pair.relationship || 'duplicate',
-                postIds: [pair.a.id || pair.a.post_id, pair.b.id || pair.b.post_id]
+                postIds: [pair.a.post_id, pair.b.post_id]
             }));
         },
 
+        /**
+         * @param {number} idx
+         */
         selectGraph(idx) {
             if (idx < 0 || idx >= this.graphs.length) return;
             this.activeGraphIndex = idx;
@@ -265,6 +337,9 @@ export function ReconciliationManager(cluster) {
             this.syncLhsState();
         },
 
+        /**
+         * @param {number} postId
+         */
         selectSuperior(postId) {
             if (!postId) return;
             this.selectedSuperiorId = postId;
@@ -272,6 +347,9 @@ export function ReconciliationManager(cluster) {
             this.syncLhsState();
         },
 
+        /**
+         * @param {number} postId
+         */
         setLhsPost(postId) {
             this.selectSuperior(postId);
         },
@@ -289,16 +367,24 @@ export function ReconciliationManager(cluster) {
             }
 
             const post = this.getLocalClusterPost(this.lhsPostId);
-            const rawTags = post?.tags || [];
+            const { flatTags } = this.extractFlatTagsAndPost(post);
 
-            this.lhsTags = [...rawTags];
-            this.originalLhsTagNames = new Set(rawTags);
+            this.lhsTags = [...flatTags];
+            this.originalLhsTagNames = new Set(flatTags);
+            this.originalRating = post?.rating || null;
         },
 
+        /**
+         * @param {string} r
+         */
         setRating(r) {
             this.activeRating = r;
         },
 
+        /**
+         * @param {string} tagName
+         * @param {string} [category='GENERAL']
+         */
         addTagWithImplications(tagName, category = 'GENERAL') {
             const fullImpliedChain = this.getAllImpliedTags(tagName);
             const tagsToAdd = [tagName, ...fullImpliedChain];
@@ -306,7 +392,7 @@ export function ReconciliationManager(cluster) {
             tagsToAdd.forEach(t => {
                 if (!this.lhsTags.includes(t)) {
                     this.lhsTags.push(t);
-                    
+
                     if (!this.originalLhsTagNames.has(t)) {
                         this.newTags.add(t);
                     }
@@ -319,13 +405,19 @@ export function ReconciliationManager(cluster) {
             });
         },
 
+        /**
+         * @param {{ name: string, category: string }} tagObj
+         */
         copyTagToLhsWithImplications(tagObj) {
             this.addTagWithImplications(tagObj.name, tagObj.category);
         },
 
+        /**
+         * @param {string | { name: string }} tagObj
+         */
         removeTagWithImplications(tagObj) {
             const tagName = typeof tagObj === 'string' ? tagObj : tagObj.name;
-            const chain = TagManager.getImplicationChain(this.lhsPostId, tagName, this.lhsTags);
+            const chain = this.getImplicationChain(this.lhsPostId, tagName, this.lhsTags);
 
             const toRemove = new Set([tagName]);
             if (chain) {
@@ -335,7 +427,7 @@ export function ReconciliationManager(cluster) {
 
             this.lhsTags = this.lhsTags.filter(t => {
                 if (toRemove.has(t)) {
-                    if (this.originalLhsTagNames.has(t) && !this.removedLhsTags.includes(t)) {
+                    if (this.originalLhsTagNames.has(t) && !this.removedLhsTags.some(rt => (typeof rt === 'string' ? rt === t : rt.name === t))) {
                         this.removedLhsTags.push(t);
                     }
                     this.newTags.delete(t);
@@ -345,6 +437,9 @@ export function ReconciliationManager(cluster) {
             });
         },
 
+        /**
+         * @param {string | { name: string }} tagObj
+         */
         restoreTag(tagObj) {
             const tagName = typeof tagObj === 'string' ? tagObj : tagObj.name;
             this.addTagWithImplications(tagName);
@@ -369,6 +464,7 @@ export function ReconciliationManager(cluster) {
             this.isLoading = false;
             this.graphs = [];
             this.fetchedPostsMap.clear();
+
             if (globalActiveReconciliation === this) {
                 globalActiveReconciliation = null;
             }
@@ -376,14 +472,9 @@ export function ReconciliationManager(cluster) {
     };
 }
 
-const registerAlpineData = () => {
+// Alpine Component Registration
+document.addEventListener('alpine:init', () => {
     if (window.Alpine) {
         window.Alpine.data('ReconciliationManager', ReconciliationManager);
     }
-};
-
-if (window.Alpine) {
-    registerAlpineData();
-} else {
-    document.addEventListener('alpine:init', registerAlpineData);
-}
+});

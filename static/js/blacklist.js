@@ -1,23 +1,57 @@
+// @ts-check
+
+import { showToast } from './toasts.js';
+
+const DEFAULT_BLACKLIST = `# Violence
+gore
+snuff
+rape
+
+# ABDL
+young -rating:s
+diaper -rating:s
+
+# Fetish
+feces
+urine
+fart_fetish
+realistic_feral rating:e
+
+# Controversial
+politics`;
+
+/** @type {Record<string, string>} */
 const RATING_MAP = {
     s: 's', safe: 's',
     q: 'q', questionable: 'q',
     e: 'e', explicit: 'e',
 };
 
+/** @type {Record<string, number>} */
 const RATING_ORDER = { s: 1, q: 2, e: 3 };
 
-function normalizeRating(r) {
+/**
+ * Normalizes e621 ratings into 's', 'q', or 'e'.
+ * @param {string} r
+ * @returns {string}
+ */
+export function normalizeRating(r) {
     if (!r) return 's';
     const clean = String(r).toLowerCase().trim();
     return RATING_MAP[clean] || clean;
 }
 
-class TermMatcher {
+export class TermMatcher {
+    /**
+     * @param {string} rawTerm
+     */
     constructor(rawTerm) {
         this.rawTerm = rawTerm.toLowerCase().trim();
         this.isRating = this.rawTerm.startsWith('rating:');
+        /** @type {Set<string>} */
         this.allowedRatings = new Set();
         this.hasWildcard = false;
+        /** @type {RegExp|null} */
         this.regex = null;
 
         if (this.isRating) {
@@ -37,9 +71,14 @@ class TermMatcher {
         }
     }
 
+    /**
+     * @param {Set<string>} tagsSet
+     * @param {string} rating
+     * @returns {boolean}
+     */
     matches(tagsSet, rating) {
         if (this.isRating) return this.allowedRatings.has(normalizeRating(rating));
-        if (this.hasWildcard) {
+        if (this.hasWildcard && this.regex) {
             for (const tag of tagsSet) {
                 if (this.regex.test(tag)) return true;
             }
@@ -49,20 +88,34 @@ class TermMatcher {
     }
 }
 
-class BlacklistRule {
+export class BlacklistRule {
+    /**
+     * @param {string} line
+     */
     constructor(line) {
         this.rawLine = line.trim();
+        /** @type {TermMatcher[]} */
         this.positiveTerms = [];
+        /** @type {TermMatcher[]} */
         this.negativeTerms = [];
+        /** @type {TermMatcher[][]} */
         this.orGroups = [];
         this._parse(line);
     }
 
+    /**
+     * @private
+     * @param {string} line
+     */
     _parse(line) {
         if (line.includes('#')) line = line.split('#')[0];
         line = line.trim();
         if (!line) return;
 
+        /**
+         * @param {string} tok
+         * @returns {[string, string]}
+         */
         const parsePrefix = (tok) => {
             if (tok.startsWith('-')) return ['-', tok.slice(1)];
             if (tok.startsWith('~')) return ['~', tok.slice(1)];
@@ -70,6 +123,7 @@ class BlacklistRule {
         };
 
         const tokens = line.match(/-\(\s*[^)]+\s*\)|\(\s*[^)]+\s*\)|[^\s()]+/g) || [];
+        /** @type {TermMatcher[]} */
         let standaloneOrGroup = [];
 
         for (let token of tokens) {
@@ -125,6 +179,11 @@ class BlacklistRule {
         );
     }
 
+    /**
+     * @param {Set<string>} tagsSet
+     * @param {string} rating
+     * @returns {boolean}
+     */
     matches(tagsSet, rating) {
         if (this.isEmpty()) return false;
         const normRating = normalizeRating(rating);
@@ -143,7 +202,11 @@ class BlacklistRule {
 }
 
 export class E621BlacklistEvaluator {
+    /**
+     * @param {string} blacklistText
+     */
     constructor(blacklistText) {
+        /** @type {BlacklistRule[]} */
         this.rules = [];
         if (blacklistText) {
             for (const line of blacklistText.split('\n')) {
@@ -155,6 +218,11 @@ export class E621BlacklistEvaluator {
         }
     }
 
+    /**
+     * @param {Set<string>} tagsSet
+     * @param {string} rating
+     * @returns {{ isBlacklisted: boolean, matchedRule: string|null }}
+     */
     evaluate(tagsSet, rating) {
         const normRating = normalizeRating(rating);
         for (const rule of this.rules) {
@@ -166,6 +234,10 @@ export class E621BlacklistEvaluator {
     }
 }
 
+/**
+ * Extracts union of all tags and worst-case canonical rating for a cluster of posts.
+ * @param {any[]} clusterPosts
+ */
 export function getClusterUnionTagsAndRating(clusterPosts) {
     const unionTags = new Set();
     let maxRatingScore = 0;
@@ -181,14 +253,21 @@ export function getClusterUnionTagsAndRating(clusterPosts) {
             canonicalRating = pRating;
         }
 
-        for (const tag of post.tags) {
-            unionTags.add(tag);
+        if (Array.isArray(post.tags)) {
+            for (const tag of post.tags) {
+                unionTags.add(tag);
+            }
         }
     }
 
     return { unionTags, canonicalRating };
 }
 
+/**
+ * Evaluates a cluster against a blacklist evaluator and sets metadata directly.
+ * @param {any} cluster
+ * @param {E621BlacklistEvaluator} evaluator
+ */
 export function applyBlacklistToCluster(cluster, evaluator) {
     const { unionTags, canonicalRating } = getClusterUnionTagsAndRating(cluster.posts);
     const { isBlacklisted, matchedRule } = evaluator.evaluate(unionTags, canonicalRating);
@@ -198,66 +277,79 @@ export function applyBlacklistToCluster(cluster, evaluator) {
     cluster.matched_rule = matchedRule;
 }
 
-export const BlacklistManager = {
-    blacklistText: localStorage.getItem('e621_blacklist') || '',
+/**
+ * Initial reactive state for blacklist functionality
+ */
+export const initialBlacklistState = {
+    blacklistText: localStorage.getItem('e621_blacklist') || DEFAULT_BLACKLIST,
     isImportingBlacklist: false,
+    showBlacklistModal: false
+};
 
-    async saveBlacklist(silent = false) {
-        localStorage.setItem('e621_blacklist', this.blacklistText);
-        this.showBlacklistModal = false;
+/**
+ * Saves current blacklist text to localStorage and recalculates cluster blacklist status.
+ * @param {AppState} state
+ * @param {boolean} [silent=false]
+ */
+export async function saveBlacklist(state, silent = false) {
+    localStorage.setItem('e621_blacklist', state.blacklistText || '');
+    state.showBlacklistModal = false;
 
-        const evaluator = new E621BlacklistEvaluator(this.blacklistText || '');
-        for (const batch of this.batches) {
+    const evaluator = new E621BlacklistEvaluator(state.blacklistText || '');
+    
+    if (Array.isArray(state.batches)) {
+        for (const batch of state.batches) {
             if (!batch.clusters) continue;
             for (const cluster of batch.clusters) {
                 applyBlacklistToCluster(cluster, evaluator);
                 cluster.collapsed = cluster.is_resolved || cluster.is_blacklisted;
             }
         }
-
-        if (!silent && this.showToast) {
-            this.showToast('Blacklist updated.', 'success');
-        }
-    },
-
-    async importBlacklist() {
-        if (!this.e621User) return;
-        
-        this.isImportingBlacklist = true;
-        
-        try {
-            const authString = btoa(`${this.e621User.username}:${this.e621User.apiKey}`);
-            const appAuthor = import.meta.env.VITE_E621_APP_AUTHOR || 'anonymous';
-            
-            const res = await fetch(`https://e621.net/users/${this.e621User.id}.json`, {
-                headers: {
-                    'Authorization': `Basic ${authString}`,
-                    'User-Agent': `E621CleanupCoordinator/1.0 (by ${appAuthor})`
-                }
-            });
-
-            if (!res.ok) {
-                throw new Error(`e621 returned status ${res.status}`);
-            }
-            
-            const userData = await res.json();
-            
-            if (userData.blacklisted_tags !== undefined) {
-                this.blacklistText = userData.blacklisted_tags;
-                await this.saveBlacklist(true);
-                if (this.showToast) {
-                    this.showToast('Blacklist imported and saved successfully', 'success');
-                }
-            } else {
-                throw new Error('Could not locate blacklisted tags in profile.');
-            }
-        } catch (err) {
-            console.error('Blacklist import error:', err);
-            if (this.showToast) {
-                this.showToast(`Import failed: ${err.message}`, 'error');
-            }
-        } finally {
-            this.isImportingBlacklist = false;
-        }
     }
-};
+
+    if (!silent) {
+        showToast(state, 'Blacklist updated.', 'success');
+    }
+}
+
+/**
+ * Imports blacklisted tags from the logged-in user's e621 account profile.
+ * @param {AppState} state
+ */
+export async function importBlacklist(state) {
+    if (!state.e621User) return;
+
+    state.isImportingBlacklist = true;
+
+    try {
+        const authString = btoa(`${state.e621User.username}:${state.e621User.apiKey}`);
+        const appAuthor = import.meta.env.VITE_E621_APP_AUTHOR || 'anonymous';
+
+        const res = await fetch(`https://e621.net/users/${state.e621User.id}.json`, {
+            headers: {
+                'Authorization': `Basic ${authString}`,
+                'User-Agent': `E621CleanupCoordinator/1.0 (by ${appAuthor})`
+            }
+        });
+
+        if (!res.ok) {
+            throw new Error(`e621 returned status ${res.status}`);
+        }
+
+        const userData = await res.json();
+
+        if (userData.blacklisted_tags !== undefined) {
+            state.blacklistText = userData.blacklisted_tags;
+            await saveBlacklist(state, true);
+            showToast(state, 'Blacklist imported and saved successfully', 'success');
+        } else {
+            throw new Error('Could not locate blacklisted tags in profile.');
+        }
+    } catch (err) {
+        console.error('[Blacklist] Import error:', err);
+        const message = err instanceof Error ? err.message : String(err);
+        showToast(state, `Import failed: ${message}`, 'error');
+    } finally {
+        state.isImportingBlacklist = false;
+    }
+}

@@ -64,7 +64,7 @@
 
             <!-- Screen 1: Comparison View Scope -->
             <template x-if="activeView === 'compare'">
-                <div x-data="ComparisonManager(cluster)" x-init="startComparison()">
+                <div x-data="ComparisonManager(cluster)" x-init="startComparison($data)">
                     <template x-if="isActive">
                         <div class="space-y-3">
                             <load src="/templates/components/cluster-comparison.html" />
@@ -76,12 +76,7 @@
                                     Exit
                                 </button>
 
-                                <button @click="
-                                            cluster.pairs = pairs;
-                                            cluster._fetchedPosts = fetchedPostsMap;
-                                            closeComparison();
-                                            activeView = 'reconcile';
-                                        "
+                                <button @click="proceedToReconciliation($data)"
                                         class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded font-bold transition flex items-center gap-2 shadow-md">
                                     <span>Proceed to Tag Reconciliation</span>
                                     <span>→</span>
@@ -94,7 +89,7 @@
 
             <!-- Screen 2: Tag Reconciliation View Scope -->
             <template x-if="activeView === 'reconcile'">
-                <div x-data="ReconciliationManager(cluster)" x-init="startReconciliation()">
+                <div x-data="ReconciliationManager(cluster)" x-init="startReconciliation($data)">
                     <template x-if="isActive">
                         <div class="space-y-3">
                             <load src="/templates/components/cluster-reconciliation.html" />
