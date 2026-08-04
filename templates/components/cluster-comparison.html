@@ -12,7 +12,7 @@
                         :class="activePairIndex === idx 
                             ? 'bg-blue-600 text-white font-bold' 
                             : (pair.relationship ? 'bg-gray-800 text-green-400 border border-green-800/60' : 'bg-gray-900 text-gray-400 hover:text-white border border-gray-800')">
-                    <span x-text="`#${pair.a.id} × #${pair.b.id}`"></span>
+                    <span x-text="`#${pair.a.post_id} × #${pair.b.post_id}`"></span>
                     <template x-if="pair.relationship">
                         <span class="ml-1 text-[10px]">✓</span>
                     </template>
@@ -70,15 +70,15 @@
                 <!-- Image A Panel -->
                 <div class="flex flex-col items-center bg-gray-900 border border-gray-800 rounded-lg p-3">
                     <div class="w-full flex items-center justify-between mb-2">
-                        <a :href="`https://e621.net/posts/${currentPair.a.id}`" target="_blank"
+                        <a :href="`https://e621.net/posts/${currentPair.a.post_id}`" target="_blank"
                            class="text-xs font-mono font-bold text-blue-400 hover:underline"
-                           x-text="`Post #${currentPair.a.id}`"></a>
+                           x-text="`Post #${currentPair.a.post_id}`"></a>
                         <span class="text-[11px] text-gray-500 font-mono"
-                              x-text="`${currentPair.a.file.width}×${currentPair.a.file.height}`"></span>
+                              x-text="`${currentPair.a.image_width || '?'}×${currentPair.a.image_height || '?'}`"></span>
                     </div>
                     <div class="relative w-full h-[70vh] flex items-center justify-center bg-black/50 rounded overflow-hidden select-none">
                         <div class="relative max-h-full max-w-full flex items-center justify-center">
-                            <img :src="currentPair.a.file.url || currentPair.a.sample.url" 
+                            <img :src="currentPair.a.fileUrl" 
                                  class="max-h-[70vh] max-w-full object-contain cursor-crosshair block"
                                  @mousemove="handleMouseMove($event, $el)"
                                  @mouseenter="isHovering = true"
@@ -99,15 +99,15 @@
                 <!-- Image B Panel -->
                 <div class="flex flex-col items-center bg-gray-900 border border-gray-800 rounded-lg p-3">
                     <div class="w-full flex items-center justify-between mb-2">
-                        <a :href="`https://e621.net/posts/${currentPair.b.id}`" target="_blank"
+                        <a :href="`https://e621.net/posts/${currentPair.b.post_id}`" target="_blank"
                            class="text-xs font-mono font-bold text-blue-400 hover:underline"
-                           x-text="`Post #${currentPair.b.id}`"></a>
+                           x-text="`Post #${currentPair.b.post_id}`"></a>
                         <span class="text-[11px] text-gray-500 font-mono"
-                              x-text="`${currentPair.b.file.width}×${currentPair.b.file.height}`"></span>
+                              x-text="`${currentPair.b.image_width || '?'}×${currentPair.b.image_height || '?'}`"></span>
                     </div>
                     <div class="relative w-full h-[70vh] flex items-center justify-center bg-black/50 rounded overflow-hidden select-none">
                         <div class="relative max-h-full max-w-full flex items-center justify-center">
-                            <img :src="currentPair.b.file.url || currentPair.b.sample.url" 
+                            <img :src="currentPair.b.fileUrl" 
                                  class="max-h-[70vh] max-w-full object-contain cursor-crosshair block"
                                  @mousemove="handleMouseMove($event, $el)"
                                  @mouseenter="isHovering = true"
@@ -130,16 +130,20 @@
             <div x-show="mode !== 'side-by-side'" class="flex flex-col items-center bg-gray-900 border border-gray-800 rounded-lg p-3">
                 <div class="w-full flex items-center justify-between mb-2">
                     <div class="flex items-center gap-3">
-                        <span class="text-xs font-mono font-bold text-blue-400" x-text="`#${currentPair.a.id} (${currentPair.a.file.width}×${currentPair.a.file.height})`"></span>
+                        <span class="text-xs font-mono font-bold text-blue-400"
+                              x-text="`#${currentPair.a.post_id} (${currentPair.a.image_width || '?'}×${currentPair.a.image_height || '?'})`"></span>
                         <span class="text-xs text-gray-500 font-bold">vs</span>
-                        <span class="text-xs font-mono font-bold text-blue-400" x-text="`#${currentPair.b.id} (${currentPair.b.file.width}×${currentPair.b.file.height})`"></span>
+                        <span class="text-xs font-mono font-bold text-blue-400"
+                              x-text="`#${currentPair.b.post_id} (${currentPair.b.image_width || '?'}×${currentPair.b.image_height || '?'})`"></span>
                     </div>
                     
                     <!-- Mode-specific status label -->
                     <div class="text-[11px] font-mono text-gray-400">
                         <span x-show="mode === 'swipe'">Move cursor across image to swipe</span>
                         <span x-show="mode === 'diff'">Difference overlay (matching pixels turn black)</span>
-                        <span x-show="mode === 'blink'" x-text="`Showing: Post #${blinkShowB ? currentPair.b.id : currentPair.a.id}`" class="text-amber-400 font-bold"></span>
+                        <span x-show="mode === 'blink'"
+                              x-text="`Showing: Post #${blinkShowB ? currentPair.b.post_id : currentPair.a.post_id}`"
+                              class="text-amber-400 font-bold"></span>
                     </div>
                 </div>
 
@@ -150,11 +154,11 @@
                          class="relative max-h-full max-w-full flex items-center justify-center cursor-ew-resize"
                          @mousemove="handleSwipeMove($event, $el)">
                         <!-- Base Layer: Image A -->
-                        <img :src="currentPair.a.file.url || currentPair.a.sample.url" 
+                        <img :src="currentPair.a.fileUrl" 
                              class="max-h-[70vh] max-w-full object-contain block pointer-events-none">
 
                         <!-- Top Layer: Image B (Clipped) -->
-                        <img :src="currentPair.b.file.url || currentPair.b.sample.url" 
+                        <img :src="currentPair.b.fileUrl" 
                              class="absolute inset-0 w-full h-full object-contain block pointer-events-none"
                              :style="`clip-path: inset(0 ${100 - swipePos}% 0 0);`">
 
@@ -167,18 +171,18 @@
                     <!-- DIFF MODE -->
                     <div x-show="mode === 'diff'" class="relative max-h-full max-w-full flex items-center justify-center bg-white">
                         <!-- Image A Base -->
-                        <img :src="currentPair.a.file.url || currentPair.a.sample.url" 
+                        <img :src="currentPair.a.fileUrl" 
                              class="max-h-[70vh] max-w-full object-contain block">
 
                         <!-- Image B Difference Blend -->
-                        <img :src="currentPair.b.file.url || currentPair.b.sample.url" 
+                        <img :src="currentPair.b.fileUrl" 
                              class="absolute inset-0 w-full h-full object-contain block"
                              style="mix-blend-mode: difference;">
                     </div>
 
                     <!-- BLINK MODE -->
                     <div x-show="mode === 'blink'" class="relative max-h-full max-w-full flex items-center justify-center">
-                        <img :src="(blinkShowB ? currentPair.b : currentPair.a).file.url || (blinkShowB ? currentPair.b : currentPair.a).sample.url" 
+                        <img :src="(blinkShowB ? currentPair.b : currentPair.a).fileUrl" 
                              class="max-h-[70vh] max-w-full object-contain block">
                     </div>
 
@@ -188,7 +192,7 @@
             <!-- Relationship Actions for Current Pair -->
             <div class="flex items-center justify-between pt-2 border-t border-gray-800">
                 <div class="text-xs text-gray-400">
-                    Classify relation between <span class="font-mono text-gray-200" x-text="`#${currentPair.a.id}`"></span> and <span class="font-mono text-gray-200" x-text="`#${currentPair.b.id}`"></span>:
+                    Classify relation between <span class="font-mono text-gray-200" x-text="`#${currentPair.a.post_id}`"></span> and <span class="font-mono text-gray-200" x-text="`#${currentPair.b.post_id}`"></span>:
                 </div>
                 <div class="flex items-center gap-2">
                     <button @click="setRelationship('duplicate')"
