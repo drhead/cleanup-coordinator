@@ -18,10 +18,6 @@ export function ReconciliationManager(cluster) {
         isActive: false,
         isLoading: false,
 
-        /** @type {AppState} */
-        // @ts-expect-error
-        appStateRef: null,
-
         /** @type {Map<number, string>} */
         fetchedPostsMap: new Map(),
 

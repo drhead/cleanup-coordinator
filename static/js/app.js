@@ -46,7 +46,7 @@ document.addEventListener('alpine:init', () => {
         loadAppData() {
             fetch('/api/v1/projects')
                 .then(res => res.json())
-                .then(/** @param {{ projects?: any[] }} data */ data => {
+                .then(data => {
                     this.projects = data.projects || [];
                 });
 
@@ -59,13 +59,15 @@ document.addEventListener('alpine:init', () => {
 
         /**
          * Helper when a user clicks a project in the UI
+         * @param {number} projectId
          */
         selectProject(projectId) {
-            Alpine.store('batches').selectProject(this.projects, projectId);
+            /** @type {import('./batches.js').BatchManager} */ (Alpine.store('batches')).selectProject(this.projects, projectId);
             this.currentScreen = 'batches';
         },
         /**
          * Views batch detail and switches screen
+         * @param {number} batch
          */
         viewBatch(batch) {
             /** @type {import('./batches.js').BatchManager} */ (Alpine.store('batches')).viewBatchDetail(batch);

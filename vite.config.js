@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite';
 import injectHTML from 'vite-plugin-html-inject';
-import { resolve } from 'path';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
@@ -12,6 +11,9 @@ export default defineConfig({
   ],
   server: {
     host: '0.0.0.0',
+    allowedHosts: [
+      import.meta.env.VITE_DOMAIN
+    ],
     port: 8621,
     proxy: {
       '/api': {
