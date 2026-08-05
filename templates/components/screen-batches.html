@@ -3,10 +3,10 @@
     <!-- Explorer Header -->
     <div class="flex items-center justify-between">
         <div>
-            <h2 class="text-xl font-bold text-gray-200" x-text="activeProject?.title"></h2>
+            <h2 class="text-xl font-bold text-gray-200" x-text="$store.batches.activeProject?.title"></h2>
             <p class="text-xs text-gray-400">Click any batch row to inspect or work on it.</p>
         </div>
-        <div class="text-xs text-gray-400 font-mono" x-text="`Total Batches: ${batches.length}`"></div>
+        <div class="text-xs text-gray-400 font-mono" x-text="`Total Batches: ${$store.batches.batches.length}`"></div>
     </div>
 
     <!-- Batches Table View -->
@@ -20,10 +20,10 @@
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-800/60">
-                <template x-for="batch in batches" :key="batch.batch_id">
+                <template x-for="batch in $store.batches.batches" :key="batch.batch_id">
                     <!-- Batch Table Row -->
                     <tr class="hover:bg-gray-900 cursor-pointer transition"
-                        @click="viewBatchDetail(batch)">
+                        @click="viewBatch(batch)">
                         
                         <!-- Batch Number Column -->
                         <td class="py-2 px-3 font-bold text-gray-300 text-center" x-text="batch.batch_number"></td>
@@ -38,7 +38,7 @@
                                 <!-- Countdown Timer on Claimed Batches -->
                                 <template x-if="batch.status === 'CLAIMED' && batch.leased_until">
                                     <span class="text-[11px] text-amber-400 font-semibold"
-                                          x-text="getRemainingTimeString(batch.leased_until)"></span>
+                                          x-text="$store.batches.getRemainingTime(batch.leased_until)"></span>
                                 </template>
                             </div>
                         </td>
@@ -48,12 +48,12 @@
                             <div class="flex items-center space-x-1.5 flex-wrap gap-y-1">
                                 <template x-for="cluster in batch.clusters" :key="cluster.cluster_id">
                                     <div class="w-2.5 h-2.5 rounded-sm transition-all"
-                                        :class="{
-                                            'bg-green-500': cluster.is_resolved,
-                                            'bg-zinc-900 border border-gray-800': !cluster.is_resolved && cluster.is_blacklisted,
-                                            'bg-gray-800 border border-gray-700': !cluster.is_resolved && !cluster.is_blacklisted
-                                        }"
-                                        :title="`Cluster #${cluster.cluster_index}: ${cluster.is_resolved ? 'Resolved' : cluster.is_blacklisted ? 'Blacklisted' : 'Pending'}`">
+                                         :class="{
+                                             'bg-green-500': cluster.is_resolved,
+                                             'bg-zinc-900 border border-gray-800': !cluster.is_resolved && cluster.is_blacklisted,
+                                             'bg-gray-800 border border-gray-700': !cluster.is_resolved && !cluster.is_blacklisted
+                                         }"
+                                         :title="`Cluster #${cluster.cluster_index}: ${cluster.is_resolved ? 'Resolved' : cluster.is_blacklisted ? 'Blacklisted' : 'Pending'}`">
                                     </div>
                                 </template>
                             </div>

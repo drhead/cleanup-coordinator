@@ -4,15 +4,7 @@ import Alpine from 'alpinejs';
 
 import { fetchPostFileUrls } from './e621_api.js';
 import { showToast } from './toasts.js';
-import {
-    initTags,
-    getSortedTags,
-    isImpliedTag,
-    getImplicationChain,
-    getTagStyle,
-    getRatingBadgeClass,
-    getRatingLabel
-} from './tags.js';
+import { tagManager } from './tags.js';
 
 /** @type {any} */
 let globalActiveReconciliation = null;
@@ -159,27 +151,50 @@ export function ReconciliationManager(cluster) {
         },
 
         /**
+         * Delegate sorting directly to TagManager singleton.
          * @param {any} target
          */
         getSortedTags(target) {
             const { flatTags, post } = this.extractFlatTagsAndPost(target);
-            return getSortedTags(/** @type {AppState} */ (this.appStateRef), flatTags, post);
+            return tagManager.getSortedTags(flatTags, post);
         },
 
-        getTagStyle,
-        getRatingBadgeClass,
-        getRatingLabel,
+        /**
+         * Delegate tag styling to TagManager singleton.
+         * @param {string} category
+         */
+        getTagStyle(category) {
+            return tagManager.getTagStyle(category);
+        },
 
         /**
+         * Delegate rating badges to TagManager singleton.
+         * @param {string} rating
+         */
+        getRatingBadgeClass(rating) {
+            return tagManager.getRatingBadgeClass(rating);
+        },
+
+        /**
+         * Delegate rating labels to TagManager singleton.
+         * @param {string} rating
+         */
+        getRatingLabel(rating) {
+            return tagManager.getRatingLabel(rating);
+        },
+
+        /**
+         * Check if a tag is implied using TagManager instance.
          * @param {string} tagName
          * @param {any} target
          */
         isImpliedTag(tagName, target) {
             const { flatTags } = this.extractFlatTagsAndPost(target);
-            return isImpliedTag(/** @type {AppState} */ (this.appStateRef), tagName, flatTags);
+            return tagManager.isImpliedTag(tagName, flatTags);
         },
 
         /**
+         * Get implication chain using TagManager instance.
          * @param {number|null} postId
          * @param {string} tagName
          * @param {any} target
@@ -194,7 +209,7 @@ export function ReconciliationManager(cluster) {
                 flatTags = this.extractFlatTagsAndPost(target).flatTags;
             }
 
-            return getImplicationChain(/** @type {AppState} */ (this.appStateRef), targetId, tagName, flatTags);
+            return tagManager.getImplicationChain(targetId, tagName, flatTags);
         },
 
         /**
@@ -223,18 +238,17 @@ export function ReconciliationManager(cluster) {
         },
 
         /**
+         * Traverses implications graph directly on TagManager instance.
          * @param {string} initialTag
          */
         getAllImpliedTags(initialTag) {
             const result = new Set();
             const queue = [initialTag];
-            const state = /** @type {AppState} */ (this.appStateRef);
-            const implications = state?.implications || {};
 
             while (queue.length > 0) {
                 const current = queue.shift();
                 if (!current) continue;
-                const directImplied = implications[current]?.implies || [];
+                const directImplied = tagManager.implications[current]?.implies || [];
 
                 for (const imp of directImplied) {
                     if (!result.has(imp)) {
@@ -246,14 +260,7 @@ export function ReconciliationManager(cluster) {
             return Array.from(result);
         },
 
-        /**
-         * @param {AppState} appState
-         */
-        async startReconciliation(appState) {
-            if (appState) {
-                this.appStateRef = appState;
-            }
-
+        async startReconciliation() {
             if (globalActiveReconciliation && globalActiveReconciliation !== this) {
                 globalActiveReconciliation.closeReconciliation();
             }
@@ -261,8 +268,9 @@ export function ReconciliationManager(cluster) {
             this.isLoading = true;
 
             try {
-                if (this.appStateRef) {
-                    await initTags(this.appStateRef);
+                // Ensure tag data is loaded before starting
+                if (!tagManager.isLoaded) {
+                    await tagManager.init();
                 }
 
                 await this.fetchClusterPosts();
@@ -278,7 +286,7 @@ export function ReconciliationManager(cluster) {
             } catch (err) {
                 console.error('[ReconciliationManager] Initiation error:', err);
                 const message = err instanceof Error ? err.message : 'Unknown error';
-                if (this.appStateRef) showToast(this.appStateRef, `Reconciliation error: ${message}`, 'error');
+                showToast(`Reconciliation error: ${message}`, 'error');
                 this.closeReconciliation();
             } finally {
                 this.isLoading = false;
@@ -295,7 +303,7 @@ export function ReconciliationManager(cluster) {
 
             const postIds = cluster.posts.map(p => p.post_id);
             try {
-                this.fetchedPostsMap = await fetchPostFileUrls(postIds, this.appStateRef?.e621User || null);
+                this.fetchedPostsMap = await fetchPostFileUrls(postIds);
             } catch (err) {
                 console.error('[ReconciliationManager] Failed to fetch post file URLs:', err);
             }

@@ -6,7 +6,12 @@
         <template x-for="project in projects" :key="project.project_id">
             <!-- Project Card -->
             <div class="bg-gray-900 border border-gray-800 hover:border-blue-500/50 rounded-lg p-5 cursor-pointer transition group"
-                @click="selectProject(project.project_id)">
+                 x-data="{
+                     get resolved() { return getProjectResolvedCount(project) },
+                     get total() { return getProjectTotalCount(project) },
+                     get percent() { return getProgressPercent(this.resolved, this.total) }
+                 }"
+                 @click="selectProject(project.project_id)">
                 
                 <!-- Project Header -->
                 <div class="flex items-start justify-between mb-2">
@@ -22,12 +27,12 @@
                     <div class="flex items-center justify-between text-xs font-mono">
                         <span class="text-gray-400">Overall Progress</span>
                         <span class="text-gray-200 font-bold" 
-                            x-text="`${getProjectResolvedCount(project)}/${getProjectTotalCount(project)} (${getProgressPercent(getProjectResolvedCount(project), getProjectTotalCount(project))}%)`"></span>
+                              x-text="`${resolved}/${total} (${percent}%)`"></span>
                     </div>
                     <div class="w-full bg-gray-950 rounded-full h-2 overflow-hidden border border-gray-800">
-                        <div class="bg-blue-500 h-full transition-all duration-300 rounded-full"
-                            :style="`width: ${getProgressPercent(getProjectResolvedCount(project), getProjectTotalCount(project))}%`"
-                            :class="getProgressPercent(getProjectResolvedCount(project), getProjectTotalCount(project)) === 100 ? 'bg-green-500' : 'bg-blue-500'"></div>
+                        <div class="h-full transition-all duration-300 rounded-full"
+                             :style="`width: ${percent}%`"
+                             :class="percent === 100 ? 'bg-green-500' : 'bg-blue-500'"></div>
                     </div>
                 </div>
                 

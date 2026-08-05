@@ -2,7 +2,7 @@ import type { Alpine as AlpineType, interceptor } from 'alpinejs';
 
 declare global {
   interface Window {
-    Alpine?: AlpineType;
+    Alpine: AlpineType;
     ComparisonManager?: any;
     ReconciliationManager?: any;
   }
@@ -61,7 +61,7 @@ declare global {
 
   interface Cluster {
     cluster_id: number;
-    cluster_index: int;
+    cluster_index: number;
     note: string | null;
     is_resolved: boolean;
     manual_resolution: boolean;
@@ -95,56 +95,6 @@ declare global {
     id: number;
   }
 
-  // Feature-Specific State Slices (Decoupled from redundant toast arrays)
-  interface BatchState {
-    activeProject: Project | null;
-    projects?: Project[];
-    batches: Batch[];
-    activeBatch: Batch | null;
-    activeLease: Lease | null;
-    currentScreen?: string;
-    nowTimestamp?: number;
-    blacklistText?: string;
-    pollInterval?: any;
-  }
-
-  interface BlacklistState {
-    blacklistText: string;
-    isImportingBlacklist: boolean;
-    showBlacklistModal: boolean;
-    batches?: Batch[];
-    e621User?: E621User | null;
-  }
-
-  interface AuthState {
-    showLoginModal: boolean;
-    isLoggingIn: boolean;
-    loginError: string | null;
-    loginForm: { username: string; apiKey: string };
-    e621User: E621User | null;
-  }
-
-  interface TagState {
-    implications: Record<string, { implies?: string[]; implied_by?: string[] }>;
-    hasImplications: boolean;
-    tagData: Record<string, number[]>;
-    hasTagData: boolean;
-  }
-
-  // Toast System Definitions
-  interface Toast {
-    id: number | string;
-    message: string;
-    type?: 'success' | 'error' | 'warning' | 'info';
-    duration?: number;
-  }
-
-  interface ToastState {
-    toasts: Toast[];
-  }
-
-  // Master Root Application State (Combines all slices + central toasts + user session)
-  interface AppState extends BatchState, ToastState, BlacklistState, AuthState, TagState {}
 }
 
 export {};

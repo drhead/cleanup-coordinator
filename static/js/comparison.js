@@ -137,13 +137,9 @@ export function ComparisonManager(cluster) {
             };
         },
 
-        /**
-         * Starts comparison for this cluster.
-         * @param {AppState} [appState]
-         */
-        async startComparison(appState) {
+        async startComparison() {
             if (!cluster || !cluster.posts || cluster.posts.length < 2) {
-                if (appState) showToast(appState, 'Cluster must have at least 2 posts to compare.', 'error');
+                showToast('Cluster must have at least 2 posts to compare.', 'error');
                 return;
             }
 
@@ -156,7 +152,7 @@ export function ComparisonManager(cluster) {
 
             try {
                 const postIds = cluster.posts.map(p => p.post_id);
-                this.fetchedPostsMap = await fetchPostFileUrls(postIds, appState?.e621User || null);
+                this.fetchedPostsMap = await fetchPostFileUrls(postIds);
 
                 // Populate posts with fileUrl from API map
                 for (const post of cluster.posts) {
@@ -187,7 +183,7 @@ export function ComparisonManager(cluster) {
             } catch (err) {
                 console.error('[ComparisonManager] Initiation error:', err);
                 const message = err instanceof Error ? err.message : 'Unknown error';
-                if (appState) showToast(appState, `Comparison error: ${message}`, 'error');
+                showToast(`Comparison error: ${message}`, 'error');
                 this.closeComparison();
             } finally {
                 this.isLoading = false;

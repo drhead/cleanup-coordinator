@@ -1,26 +1,28 @@
 // @ts-check
 
+import { getE621User } from './auth.js';
+
 /**
  * Fetches high-res file URLs for a list of e621 post IDs.
  * Endpoint response shape: { "posts": [ { "id": number, "file": { "url": string } } ] }
  * 
  * @param {Array<number|string>} postIds
- * @param {{ username: string, apiKey: string } | null} [e621User]
  * @returns {Promise<Map<number, string>>} Map of postId -> direct file URL
  */
-export async function fetchPostFileUrls(postIds, e621User = null) {
+export async function fetchPostFileUrls(postIds) {
     if (!postIds || postIds.length === 0) return new Map();
 
     const idsQuery = postIds.join(',');
     const appAuthor = import.meta.env.VITE_E621_APP_AUTHOR || 'anonymous';
+    const user = getE621User();
     
     /** @type {Record<string, string>} */
     const headers = {
         'User-Agent': `E621CleanupCoordinator/1.0 (by ${appAuthor})`
     };
 
-    if (e621User?.username && e621User?.apiKey) {
-        const authString = btoa(`${e621User.username}:${e621User.apiKey}`);
+    if (user) {
+        const authString = btoa(`${user.username}:${user.apiKey}`);
         headers['Authorization'] = `Basic ${authString}`;
     }
 

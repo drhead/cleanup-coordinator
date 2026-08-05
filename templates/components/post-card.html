@@ -8,8 +8,8 @@
             <!-- Rating Badge -->
             <template x-if="post.rating">
                 <span class="px-1.5 py-0.5 rounded text-[11px] font-bold font-mono"
-                      :class="getRatingBadgeClass(post.rating)"
-                      x-text="getRatingLabel(post.rating)"></span>
+                      :class="$store.tags.getRatingBadgeClass(post.rating)"
+                      x-text="$store.tags.getRatingLabel(post.rating)"></span>
             </template>
 
             <!-- Post External Link -->
@@ -79,8 +79,8 @@
             
             <!-- Copy Merged Tags Action Button -->
             <button type="button"
-                    @click="copyMergedTags(post, cluster.posts)"
-                    @mouseenter="hoveredMergedData = getMergedHoverData(post, cluster.posts)"
+                    @click="$store.tags.copyMergedTags(post, cluster.posts)"
+                    @mouseenter="hoveredMergedData = $store.tags.getMergedHoverData(post, cluster.posts)"
                     @mouseleave="hoveredMergedData = null"
                     class="text-gray-500 hover:text-gray-300 hover:bg-gray-800/60 border border-transparent hover:border-gray-700/60 text-[10px] px-1.5 py-0.5 rounded transition flex items-center gap-1 active:scale-95 shadow-sm">
                 <span>📋 Copy Merged Tags</span>
@@ -88,23 +88,23 @@
                 <!-- Merged Tag Count Delta Indicator -->
                 <span class="font-mono text-[10px] font-semibold"
                     :class="{
-                        'text-emerald-400': getMergedTagDelta(post, cluster.posts) > 0,
-                        'text-amber-400': getMergedTagDelta(post, cluster.posts) < 0,
-                        'text-gray-600': getMergedTagDelta(post, cluster.posts) === 0
+                        'text-emerald-400': $store.tags.getMergedTagDelta(post, cluster.posts) > 0,
+                        'text-amber-400': $store.tags.getMergedTagDelta(post, cluster.posts) < 0,
+                        'text-gray-600': $store.tags.getMergedTagDelta(post, cluster.posts) === 0
                     }"
-                    x-text="`(${getMergedTagDelta(post, cluster.posts) > 0 ? '+' : ''}${getMergedTagDelta(post, cluster.posts)})`">
+                    x-text="`(${$store.tags.getMergedTagDelta(post, cluster.posts) > 0 ? '+' : ''}${$store.tags.getMergedTagDelta(post, cluster.posts)})`">
                 </span>
             </button>
         </div>
 
         <!-- Empty Tags Fallback -->
-        <template x-if="getSortedTags(post.tags, post).length === 0">
+        <template x-if="$store.tags.getSortedTags(post.tags, post).length === 0">
             <span class="text-gray-500 italic text-[11px] block">No tags available</span>
         </template>
         
         <!-- Categorized Tag Pills Cloud -->
         <div class="flex flex-wrap gap-x-1 gap-y-1">
-            <template x-for="tag in getSortedTags(post.tags, post)" :key="tag.category + ':' + tag.name">
+            <template x-for="tag in $store.tags.getSortedTags(post.tags, post)" :key="tag.category + ':' + tag.name">
                 <span class="font-mono text-[11px] leading-tight inline-flex items-center px-1 rounded border border-transparent select-none transition-all duration-150 ease-in-out"
                     :class="{
                         /* 1. Active Post Hover Highlights */
@@ -138,11 +138,11 @@
                                 !hoveredMergedData.tags.has(tag.name)
                         } : {})
                     }"
-                    :style="getTagStyle(tag.category)"
-                    @mouseenter="hoveredImplicationData = getImplicationChain(post.post_id, tag.name, post.tags)"
+                    :style="$store.tags.getTagStyle(tag.category)"
+                    @mouseenter="hoveredImplicationData = $store.tags.getImplicationChain(post.post_id, tag.name, post.tags)"
                     @mouseleave="hoveredImplicationData = null">
                     <span x-text="tag.name"></span>
-                    <span x-show="isImpliedTag(tag.name, post.tags)"
+                    <span x-show="$store.tags.isImpliedTag(tag.name, post.tags)"
                         class="text-emerald-400 font-bold text-[9px] ml-0.5 select-none"
                         title="Implied tag">i</span>
                 </span>

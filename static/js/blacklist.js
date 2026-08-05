@@ -1,6 +1,8 @@
 // @ts-check
 
+import Alpine from 'alpinejs';
 import { showToast } from './toasts.js';
+import { getE621User } from './auth.js';
 
 const DEFAULT_BLACKLIST = `# Violence
 gore
@@ -277,79 +279,118 @@ export function applyBlacklistToCluster(cluster, evaluator) {
     cluster.matched_rule = matchedRule;
 }
 
-/**
- * Initial reactive state for blacklist functionality
- */
-export const initialBlacklistState = {
-    blacklistText: localStorage.getItem('e621_blacklist') || DEFAULT_BLACKLIST,
-    isImportingBlacklist: false,
-    showBlacklistModal: false
-};
+export class BlacklistManager {
+    constructor() {
+        this.blacklistText = localStorage.getItem('e621_blacklist') || DEFAULT_BLACKLIST;
+        this.isImportingBlacklist = false;
+        this.showBlacklistModal = false;
+    }
 
-/**
- * Saves current blacklist text to localStorage and recalculates cluster blacklist status.
- * @param {AppState} state
- * @param {boolean} [silent=false]
- */
-export async function saveBlacklist(state, silent = false) {
-    localStorage.setItem('e621_blacklist', state.blacklistText || '');
-    state.showBlacklistModal = false;
+    openModal() {
+        this.showBlacklistModal = true;
+    }
 
-    const evaluator = new E621BlacklistEvaluator(state.blacklistText || '');
-    
-    if (Array.isArray(state.batches)) {
-        for (const batch of state.batches) {
-            if (!batch.clusters) continue;
-            for (const cluster of batch.clusters) {
-                applyBlacklistToCluster(cluster, evaluator);
-                cluster.collapsed = cluster.is_resolved || cluster.is_blacklisted;
+    closeModal() {
+        this.showBlacklistModal = false;
+    }
+
+    /**
+     * Creates an evaluator using current blacklist text
+     * @returns {E621BlacklistEvaluator}
+     */
+    getEvaluator() {
+        return new E621BlacklistEvaluator(this.blacklistText || '');
+    }
+
+    /**
+     * Saves current blacklist text to localStorage and recalculates cluster blacklist status.
+     * @param {Array<any>} [batches] Array of batches to re-evaluate
+     * @param {boolean} [silent=false]
+     */
+    async saveBlacklist(batches = [], silent = false) {
+        localStorage.setItem('e621_blacklist', this.blacklistText || '');
+        this.showBlacklistModal = false;
+
+        const evaluator = this.getEvaluator();
+
+        if (Array.isArray(batches)) {
+            for (const batch of batches) {
+                if (!batch.clusters) continue;
+                for (const cluster of batch.clusters) {
+                    applyBlacklistToCluster(cluster, evaluator);
+                    cluster.collapsed = cluster.is_resolved || cluster.is_blacklisted;
+                }
             }
+        }
+
+        if (!silent) {
+            showToast('Blacklist updated.', 'success');
         }
     }
 
-    if (!silent) {
-        showToast(state, 'Blacklist updated.', 'success');
+    /**
+     * Imports blacklisted tags from the logged-in user's e621 account profile.
+     * @param {Array<any>} [batches] Optional array of batches to re-evaluate after import
+     */
+    async importBlacklist(batches = []) {
+        const user = getE621User();
+        if (!user) {
+            showToast('You must be logged in to import your e621 blacklist.', 'warning');
+            return;
+        }
+
+        this.isImportingBlacklist = true;
+
+        try {
+            const authString = btoa(`${user.username}:${user.apiKey}`);
+            const appAuthor = import.meta.env.VITE_E621_APP_AUTHOR || 'anonymous';
+
+            const res = await fetch(`https://e621.net/users/me.json`, {
+                headers: {
+                    'Authorization': `Basic ${authString}`,
+                    'User-Agent': `E621CleanupCoordinator/1.0 (by ${appAuthor})`
+                }
+            });
+
+            if (!res.ok) {
+                throw new Error(`e621 returned status ${res.status}`);
+            }
+
+            const userData = await res.json();
+
+            if (userData.blacklisted_tags !== undefined) {
+                this.blacklistText = userData.blacklisted_tags;
+                await this.saveBlacklist(batches, true);
+                showToast('Blacklist imported and saved successfully', 'success');
+            } else {
+                throw new Error('Could not locate blacklisted tags in profile.');
+            }
+        } catch (err) {
+            console.error('[Blacklist] Import error:', err);
+            const message = err instanceof Error ? err.message : String(err);
+            showToast(`Import failed: ${message}`, 'error');
+        } finally {
+            this.isImportingBlacklist = false;
+        }
     }
 }
 
+// Singleton instance
+export const blacklistManager = new BlacklistManager();
+
 /**
- * Imports blacklisted tags from the logged-in user's e621 account profile.
- * @param {AppState} state
+ * Helper to get an active E621BlacklistEvaluator anywhere in plain JS modules
+ * @returns {E621BlacklistEvaluator}
  */
-export async function importBlacklist(state) {
-    if (!state.e621User) return;
-
-    state.isImportingBlacklist = true;
-
-    try {
-        const authString = btoa(`${state.e621User.username}:${state.e621User.apiKey}`);
-        const appAuthor = import.meta.env.VITE_E621_APP_AUTHOR || 'anonymous';
-
-        const res = await fetch(`https://e621.net/users/${state.e621User.id}.json`, {
-            headers: {
-                'Authorization': `Basic ${authString}`,
-                'User-Agent': `E621CleanupCoordinator/1.0 (by ${appAuthor})`
-            }
-        });
-
-        if (!res.ok) {
-            throw new Error(`e621 returned status ${res.status}`);
-        }
-
-        const userData = await res.json();
-
-        if (userData.blacklisted_tags !== undefined) {
-            state.blacklistText = userData.blacklisted_tags;
-            await saveBlacklist(state, true);
-            showToast(state, 'Blacklist imported and saved successfully', 'success');
-        } else {
-            throw new Error('Could not locate blacklisted tags in profile.');
-        }
-    } catch (err) {
-        console.error('[Blacklist] Import error:', err);
-        const message = err instanceof Error ? err.message : String(err);
-        showToast(state, `Import failed: ${message}`, 'error');
-    } finally {
-        state.isImportingBlacklist = false;
+export function getBlacklistEvaluator() {
+    if (window.Alpine?.store('blacklist')) {
+        // @ts-expect-error - Alpine's store API returns 'unknown'
+        return window.Alpine.store('blacklist').getEvaluator();
     }
+    return blacklistManager.getEvaluator();
 }
+
+// Register as Alpine Store
+document.addEventListener('alpine:init', () => {
+    Alpine.store('blacklist', blacklistManager);
+});

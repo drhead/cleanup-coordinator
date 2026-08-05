@@ -1,45 +1,49 @@
-<div x-show="showBlacklistModal" 
+<div x-show="$store.blacklist.showBlacklistModal" 
      class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto"
      x-cloak>
     <div class="bg-gray-900 border border-gray-800 rounded-lg max-w-2xl w-full max-h-[85vh] flex flex-col p-6 shadow-2xl my-auto"
-         @click.away="showBlacklistModal = false">
+         @click.away="$store.blacklist.closeModal()">
+        
+        <!-- Header -->
         <div class="flex items-center justify-between border-b border-gray-800 pb-3 shrink-0">
             <h3 class="text-lg font-bold text-gray-100 flex items-center space-x-2">
                 <span>🚫</span>
                 <span>Blacklist Configuration</span>
             </h3>
-            <button @click="showBlacklistModal = false" class="text-gray-400 hover:text-white font-bold text-lg">&times;</button>
+            <button @click="$store.blacklist.closeModal()" class="text-gray-400 hover:text-white font-bold text-lg">&times;</button>
         </div>
 
+        <!-- Body / Inputs -->
         <div class="my-4 space-y-3 flex-1 flex flex-col overflow-y-auto min-h-0">
             <p class="text-xs text-gray-400 leading-relaxed shrink-0">
                 Paste your e621 blacklist below to automatically hide matching clusters.
             </p>
 
-            <textarea x-model="blacklistText"
+            <textarea x-model="$store.blacklist.blacklistText"
                       rows="8"
                       class="w-full bg-gray-950 border border-gray-800 rounded p-3 text-xs font-mono text-gray-200 focus:outline-none focus:border-blue-500 resize-none flex-1 min-h-75"
                       placeholder="e.g. gore&#10;rating:e cub&#10;~cat ~dog"></textarea>
         </div>
 
+        <!-- Footer Actions -->
         <div class="flex items-center justify-between pt-2 border-t border-gray-800 shrink-0">
             <div class="flex items-center gap-2">
-                <button @click="saveBlacklist()"
+                <button @click="$store.blacklist.saveBlacklist(batches)"
                         class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-5 py-2 rounded font-semibold transition">
                     Save
                 </button>
                 
-                <template x-if="e621User">
-                    <button @click="importBlacklist()"
-                            :disabled="isImportingBlacklist"
+                <template x-if="$store.auth.e621User">
+                    <button @click="$store.blacklist.importBlacklist(batches)"
+                            :disabled="$store.blacklist.isImportingBlacklist"
                             class="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs px-4 py-2 rounded font-semibold transition">
-                        <span x-show="!isImportingBlacklist">Import from e621</span>
-                        <span x-show="isImportingBlacklist">Fetching...</span>
+                        <span x-show="!$store.blacklist.isImportingBlacklist">Import from e621</span>
+                        <span x-show="$store.blacklist.isImportingBlacklist">Fetching...</span>
                     </button>
                 </template>
             </div>
 
-            <button @click="showBlacklistModal = false"
+            <button @click="$store.blacklist.closeModal()"
                     class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs px-4 py-2 rounded font-medium transition">
                 Cancel
             </button>

@@ -1,8 +1,9 @@
-<div x-show="showLoginModal" 
+<!-- Login Modal -->
+<div x-show="$store.auth.showLoginModal" 
      class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto"
      x-cloak>
     <div class="bg-gray-900 border border-gray-800 rounded-lg max-w-xl w-full flex flex-col p-6 shadow-2xl my-auto"
-         @click.away="showLoginModal = false">
+         @click.away="$store.auth.closeLoginModal()">
         
         <!-- Header -->
         <div class="flex items-center justify-between border-b border-gray-800 pb-3 shrink-0">
@@ -10,7 +11,7 @@
                 <span>🔑</span>
                 <span>e621 Account Login</span>
             </h3>
-            <button @click="showLoginModal = false" class="text-gray-400 hover:text-white font-bold text-lg">&times;</button>
+            <button @click="$store.auth.closeLoginModal()" class="text-gray-400 hover:text-white font-bold text-lg">&times;</button>
         </div>
 
         <!-- Body / Inputs -->
@@ -33,7 +34,7 @@
                 <div>
                     <label class="block text-xs font-semibold text-gray-300 mb-1">Username</label>
                     <input type="text" 
-                           x-model="loginForm.username"
+                           x-model="$store.auth.loginForm.username"
                            placeholder="e621 Username"
                            class="w-full bg-gray-950 border border-gray-800 rounded p-2.5 text-xs font-mono text-gray-200 focus:outline-none focus:border-blue-500">
                 </div>
@@ -41,14 +42,14 @@
                 <div>
                     <label class="block text-xs font-semibold text-gray-300 mb-1">API Key</label>
                     <input type="password" 
-                           x-model="loginForm.apiKey"
+                           x-model="$store.auth.loginForm.apiKey"
                            placeholder="API Key"
                            class="w-full bg-gray-950 border border-gray-800 rounded p-2.5 text-xs font-mono text-gray-200 focus:outline-none focus:border-blue-500">
                 </div>
 
                 <!-- Error Message Banner -->
-                <div x-show="loginError" 
-                     x-text="loginError"
+                <div x-show="$store.auth.loginError" 
+                     x-text="$store.auth.loginError"
                      class="text-xs text-red-400 bg-red-950/50 border border-red-800/80 rounded p-2.5">
                 </div>
             </div>
@@ -56,14 +57,15 @@
 
         <!-- Footer Actions -->
         <div class="flex items-center justify-between pt-3 border-t border-gray-800 shrink-0">
-            <button @click="submitLogin()"
-                    :disabled="isLoggingIn"
+            <!-- Fixed submit button to invoke $store.auth.login() -->
+            <button @click="$store.auth.login()"
+                    :disabled="$store.auth.isLoggingIn"
                     class="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white text-xs px-5 py-2 rounded font-semibold transition flex items-center gap-2">
-                <span x-show="!isLoggingIn">Login</span>
-                <span x-show="isLoggingIn">Verifying...</span>
+                <span x-show="!$store.auth.isLoggingIn">Login</span>
+                <span x-show="$store.auth.isLoggingIn">Verifying...</span>
             </button>
 
-            <button @click="showLoginModal = false"
+            <button @click="$store.auth.closeLoginModal()"
                     class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs px-4 py-2 rounded font-medium transition">
                 Cancel
             </button>
