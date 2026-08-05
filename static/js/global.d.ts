@@ -11,15 +11,15 @@ declare global {
 
   // Domain Models
   interface Lease {
-    batch_id: number | string;
+    batch_id: number;
     batch_number: number;
-    project_id: number | string;
+    project_id: string;
     leased_until: string;
-    is_leased_by_you?: boolean;
+    is_leased_by_you: boolean;
   }
 
   interface Project {
-    project_id: number | string;
+    project_id: string;
     name: string;
     resolved_clusters?: number;
     total_clusters?: number;
@@ -36,10 +36,20 @@ declare global {
     | 'LORE' 
     | 'INVALID';
 
+  type PostRating = 
+    | 's'
+    | 'q'
+    | 'e';
+
+  interface TagObj {
+    name: string;
+    category: TagCategory;
+  }
+
   interface ClusterPost {
     post_id: number;
     cluster_id: number;
-    rating: string;
+    rating: PostRating;
     pool_ids: number[];
     is_flagged: boolean;
     is_deleted: boolean;
@@ -49,8 +59,10 @@ declare global {
     image_format: string;
     image_quality: number;
     fileUrl?: string;
+    description?: string;
+    sources?: string[];
     _tagsSignature?: string;
-    _sortedTags?: Array<{ name: string; category: TagCategory }>;
+    _sortedTags?: Array<TagObj>;
   }
 
   interface ClusterPair {
@@ -69,7 +81,7 @@ declare global {
     collapsed?: boolean;
     is_blacklisted?: boolean;
     matched_rule?: string | null;
-    canonical_rating?: string;
+    canonical_rating?: PostRating;
     isRefreshing?: boolean;
     pairs?: ClusterPair[];
     default_type?: string;

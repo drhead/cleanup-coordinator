@@ -2,7 +2,7 @@
 import Alpine from 'alpinejs';
 /** @type {any} */ (window).Alpine = Alpine;
 
-import { fetchPostFileUrls } from './e621_api.js';
+import { ensureClusterPostsInfo } from './e621_api.js';
 import { showToast } from './toasts.js';
 import { tagManager } from './tags.js';
 
@@ -18,9 +18,6 @@ export function ReconciliationManager(cluster) {
         isActive: false,
         isLoading: false,
 
-        /** @type {Map<number, string>} */
-        fetchedPostsMap: new Map(),
-
         /** @type {Array<{ id: number, type: string, postIds: number[] }>} */
         graphs: [],
         activeGraphIndex: 0,
@@ -33,9 +30,9 @@ export function ReconciliationManager(cluster) {
         /** @type {number|null} */
         lhsPostId: null,
 
-        /** @type {string|null} */
+        /** @type {PostRating|null} */
         activeRating: null,
-        /** @type {string|null} */
+        /** @type {PostRating|null} */
         originalRating: null,
 
         /** @type {string[]} */
@@ -44,7 +41,7 @@ export function ReconciliationManager(cluster) {
         originalLhsTagNames: new Set(),
         /** @type {Set<string>} */
         newTags: new Set(),
-        /** @type {Array<string | { name: string }>} */
+        /** @type {Array<string | TagObj>} */
         removedLhsTags: [],
         tagInput: '',
 
@@ -61,25 +58,11 @@ export function ReconciliationManager(cluster) {
             const post = cluster.posts.find(p => p.post_id === postId);
             if (!post) return null;
 
-            const fetchedUrl = this.fetchedPostsMap.get(postId);
-            if (fetchedUrl) {
-                return {
-                    ...post,
-                    fileUrl: fetchedUrl
-                };
-            }
             return post;
         },
 
         getEffectiveLhsRating() {
             return this.activeRating || this.lhsPost?.rating || null;
-        },
-
-        /**
-         * @param {number} postId
-         */
-        getPostById(postId) {
-            return postId ? this.getLocalClusterPost(postId) : null;
         },
 
         get orderedPostIds() {
@@ -90,14 +73,14 @@ export function ReconciliationManager(cluster) {
         },
 
         get lhsPost() {
-            return (this.currentGraph && this.lhsPostId) ? this.getPostById(this.lhsPostId) : null;
+            return (this.currentGraph && this.lhsPostId) ? this.getLocalClusterPost(this.lhsPostId) : null;
         },
 
         get rhsPosts() {
             if (!this.currentGraph || !this.lhsPostId) return [];
             return this.currentGraph.postIds
                 .filter(id => id !== this.lhsPostId)
-                .map(id => this.getPostById(id))
+                .map(id => this.getLocalClusterPost(id))
                 .filter(Boolean);
         },
 
@@ -109,7 +92,7 @@ export function ReconciliationManager(cluster) {
             if (this.currentGraph?.type !== 'duplicate') return false;
 
             const graphPosts = this.currentGraph.postIds
-                .map(id => this.getPostById(id))
+                .map(id => this.getLocalClusterPost(id))
                 .filter(Boolean);
 
             const initialRatings = graphPosts.map(p => p?.rating);
@@ -156,30 +139,6 @@ export function ReconciliationManager(cluster) {
         },
 
         /**
-         * Delegate tag styling to TagManager singleton.
-         * @param {string} category
-         */
-        getTagStyle(category) {
-            return tagManager.getTagStyle(category);
-        },
-
-        /**
-         * Delegate rating badges to TagManager singleton.
-         * @param {string} rating
-         */
-        getRatingBadgeClass(rating) {
-            return tagManager.getRatingBadgeClass(rating);
-        },
-
-        /**
-         * Delegate rating labels to TagManager singleton.
-         * @param {string} rating
-         */
-        getRatingLabel(rating) {
-            return tagManager.getRatingLabel(rating);
-        },
-
-        /**
          * Check if a tag is implied using TagManager instance.
          * @param {string} tagName
          * @param {any} target
@@ -211,14 +170,6 @@ export function ReconciliationManager(cluster) {
         /**
          * @param {ClusterPost|null} post
          */
-        getPostImageUrl(post) {
-            if (!post) return '';
-            return (post.post_id ? this.fetchedPostsMap.get(post.post_id) : null) || post.fileUrl || '';
-        },
-
-        /**
-         * @param {ClusterPost|null} post
-         */
         getPostDimensions(post) {
             if (!post) return 'N/A';
             const w = post.image_width;
@@ -244,7 +195,7 @@ export function ReconciliationManager(cluster) {
             while (queue.length > 0) {
                 const current = queue.shift();
                 if (!current) continue;
-                const directImplied = tagManager.implications[current]?.implies || [];
+                const directImplied = tagManager.tagInfoMap[current]?.implies || [];
 
                 for (const imp of directImplied) {
                     if (!result.has(imp)) {
@@ -269,7 +220,7 @@ export function ReconciliationManager(cluster) {
                     await tagManager.init();
                 }
 
-                await this.fetchClusterPosts();
+                await ensureClusterPostsInfo(cluster.posts);
                 this.buildGraphsFromCluster();
 
                 if (this.graphs.length === 0) {
@@ -286,22 +237,6 @@ export function ReconciliationManager(cluster) {
                 this.closeReconciliation();
             } finally {
                 this.isLoading = false;
-            }
-        },
-
-        async fetchClusterPosts() {
-            if (!cluster.posts || cluster.posts.length === 0) return;
-
-            if (cluster._fetchedPosts && cluster._fetchedPosts.size > 0) {
-                this.fetchedPostsMap = new Map(cluster._fetchedPosts);
-                return;
-            }
-
-            const postIds = cluster.posts.map(p => p.post_id);
-            try {
-                this.fetchedPostsMap = await fetchPostFileUrls(postIds);
-            } catch (err) {
-                console.error('[ReconciliationManager] Failed to fetch post file URLs:', err);
             }
         },
 
@@ -351,13 +286,6 @@ export function ReconciliationManager(cluster) {
             this.syncLhsState();
         },
 
-        /**
-         * @param {number} postId
-         */
-        setLhsPost(postId) {
-            this.selectSuperior(postId);
-        },
-
         syncLhsState() {
             this.activeRating = null;
             this.originalRating = null;
@@ -379,17 +307,9 @@ export function ReconciliationManager(cluster) {
         },
 
         /**
-         * @param {string} r
-         */
-        setRating(r) {
-            this.activeRating = r;
-        },
-
-        /**
          * @param {string} tagName
-         * @param {string} [category='GENERAL']
          */
-        addTagWithImplications(tagName, category = 'GENERAL') {
+        addTagWithImplications(tagName) {
             const fullImpliedChain = this.getAllImpliedTags(tagName);
             const tagsToAdd = [tagName, ...fullImpliedChain];
 
@@ -410,20 +330,12 @@ export function ReconciliationManager(cluster) {
         },
 
         /**
-         * @param {{ name: string, category: string }} tagObj
+         * @param {TagObj} tagObj
          */
-        copyTagToLhsWithImplications(tagObj) {
-            this.addTagWithImplications(tagObj.name, tagObj.category);
-        },
+        removeTagWithImplicators(tagObj) {
+            const chain = this.getImplicationChain(this.lhsPostId, tagObj.name, this.lhsTags);
 
-        /**
-         * @param {string | { name: string }} tagObj
-         */
-        removeTagWithImplications(tagObj) {
-            const tagName = typeof tagObj === 'string' ? tagObj : tagObj.name;
-            const chain = this.getImplicationChain(this.lhsPostId, tagName, this.lhsTags);
-
-            const toRemove = new Set([tagName]);
+            const toRemove = new Set([tagObj.name]);
             if (chain) {
                 chain.directImplicators?.forEach(t => toRemove.add(t));
                 chain.indirectImplicators?.forEach(t => toRemove.add(t));
@@ -441,18 +353,10 @@ export function ReconciliationManager(cluster) {
             });
         },
 
-        /**
-         * @param {string | { name: string }} tagObj
-         */
-        restoreTag(tagObj) {
-            const tagName = typeof tagObj === 'string' ? tagObj : tagObj.name;
-            this.addTagWithImplications(tagName);
-        },
-
         addCustomTag() {
             const cleaned = this.tagInput.trim().toLowerCase().replace(/\s+/g, '_');
             if (cleaned) {
-                this.addTagWithImplications(cleaned, 'GENERAL');
+                this.addTagWithImplications(cleaned);
             }
             this.tagInput = '';
         },
@@ -467,7 +371,6 @@ export function ReconciliationManager(cluster) {
             this.isActive = false;
             this.isLoading = false;
             this.graphs = [];
-            this.fetchedPostsMap.clear();
 
             if (globalActiveReconciliation === this) {
                 globalActiveReconciliation = null;

@@ -22,20 +22,20 @@ realistic_feral rating:e
 # Controversial
 politics`;
 
-/** @type {Record<string, string>} */
+/** @type {Record<string, PostRating>} */
 const RATING_MAP = {
     s: 's', safe: 's',
     q: 'q', questionable: 'q',
     e: 'e', explicit: 'e',
 };
 
-/** @type {Record<string, number>} */
+/** @type {Record<PostRating, number>} */
 const RATING_ORDER = { s: 1, q: 2, e: 3 };
 
 /**
  * Normalizes e621 ratings into 's', 'q', or 'e'.
  * @param {string} r
- * @returns {string}
+ * @returns {PostRating}
  */
 export function normalizeRating(r) {
     if (!r) return 's';
@@ -75,7 +75,7 @@ export class TermMatcher {
 
     /**
      * @param {Set<string>} tagsSet
-     * @param {string} rating
+     * @param {PostRating} rating
      * @returns {boolean}
      */
     matches(tagsSet, rating) {
@@ -183,7 +183,7 @@ export class BlacklistRule {
 
     /**
      * @param {Set<string>} tagsSet
-     * @param {string} rating
+     * @param {PostRating} rating
      * @returns {boolean}
      */
     matches(tagsSet, rating) {
@@ -222,7 +222,7 @@ export class E621BlacklistEvaluator {
 
     /**
      * @param {Set<string>} tagsSet
-     * @param {string} rating
+     * @param {PostRating} rating
      * @returns {{ isBlacklisted: boolean, matchedRule: string|null }}
      */
     evaluate(tagsSet, rating) {
@@ -238,11 +238,13 @@ export class E621BlacklistEvaluator {
 
 /**
  * Extracts union of all tags and worst-case canonical rating for a cluster of posts.
- * @param {any[]} clusterPosts
+ * @param {ClusterPost[]} clusterPosts
+ * @returns {{ unionTags: Set<string>, canonicalRating: PostRating }}
  */
 export function getClusterUnionTagsAndRating(clusterPosts) {
     const unionTags = new Set();
     let maxRatingScore = 0;
+    /** @type { PostRating } */
     let canonicalRating = 's';
 
     if (!clusterPosts) return { unionTags, canonicalRating };
@@ -267,7 +269,7 @@ export function getClusterUnionTagsAndRating(clusterPosts) {
 
 /**
  * Evaluates a cluster against a blacklist evaluator and sets metadata directly.
- * @param {any} cluster
+ * @param {Cluster} cluster
  * @param {E621BlacklistEvaluator} evaluator
  */
 export function applyBlacklistToCluster(cluster, evaluator) {
@@ -304,7 +306,7 @@ export class BlacklistManager {
 
     /**
      * Saves current blacklist text to localStorage and recalculates cluster blacklist status.
-     * @param {Array<any>} [batches] Array of batches to re-evaluate
+     * @param {Batch[]} [batches] Array of batches to re-evaluate
      * @param {boolean} [silent=false]
      */
     async saveBlacklist(batches = [], silent = false) {
@@ -330,7 +332,7 @@ export class BlacklistManager {
 
     /**
      * Imports blacklisted tags from the logged-in user's e621 account profile.
-     * @param {Array<any>} [batches] Optional array of batches to re-evaluate after import
+     * @param {Batch[]} [batches] Optional array of batches to re-evaluate after import
      */
     async importBlacklist(batches = []) {
         const user = getE621User();

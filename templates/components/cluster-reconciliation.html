@@ -58,7 +58,7 @@
 
                 <!-- Borderless Clean Image Frame -->
                 <div class="w-full h-72 bg-black/40 rounded flex items-center justify-center overflow-hidden">
-                    <img :src="getPostImageUrl(getPostById(pId))" class="max-h-full max-w-full object-contain rounded">
+                    <img :src="getLocalClusterPost(pId).fileUrl" class="max-h-full max-w-full object-contain rounded">
                 </div>
             </div>
         </template>
@@ -93,8 +93,8 @@
                         <!-- Left Details: Dynamic Rating Badge, Post ID & Parent ID -->
                         <div class="flex items-center space-x-2">
                             <span class="px-1.5 py-0.5 rounded text-[11px] font-bold font-mono transition-colors"
-                                  :class="getRatingBadgeClass(getEffectiveLhsRating())"
-                                  x-text="getRatingLabel(getEffectiveLhsRating())"></span>
+                                  :class="$store.tags.getRatingBadgeClass(getEffectiveLhsRating())"
+                                  x-text="$store.tags.getRatingLabel(getEffectiveLhsRating())"></span>
 
                             <a :href="`https://e621.net/posts/${lhsPost.id || lhsPost.post_id}`" target="_blank"
                                class="font-mono font-bold text-blue-400 hover:text-blue-300 hover:underline text-sm flex items-center space-x-1">
@@ -156,8 +156,8 @@
                                               'bg-cyan-600/20! text-cyan-100! border-dashed! border-cyan-400/20! font-bold!': hoveredImplicationData.indirectImplied.has(tag.name)
                                           } : {})
                                       }"
-                                      :style="(hoveredImplicationData && hoveredImplicationData.postId === (lhsPost.id || lhsPost.post_id) && (hoveredImplicationData.tagName === tag.name || hoveredImplicationData.directImplicators.has(tag.name) || hoveredImplicationData.indirectImplicators.has(tag.name) || hoveredImplicationData.directImplied.has(tag.name) || hoveredImplicationData.indirectImplied.has(tag.name))) ? '' : getTagStyle(tag.category)"
-                                      @click="removeTagWithImplications(tag)"
+                                      :style="(hoveredImplicationData && hoveredImplicationData.postId === (lhsPost.id || lhsPost.post_id) && (hoveredImplicationData.tagName === tag.name || hoveredImplicationData.directImplicators.has(tag.name) || hoveredImplicationData.indirectImplicators.has(tag.name) || hoveredImplicationData.directImplied.has(tag.name) || hoveredImplicationData.indirectImplied.has(tag.name))) ? '' : $store.tags.getTagStyle(tag.category)"
+                                      @click="removeTagWithImplicators(tag)"
                                       @mouseenter="hoveredImplicationData = getImplicationChain(lhsPost.id || lhsPost.post_id, tag.name, lhsTags)"
                                       @mouseleave="hoveredImplicationData = null">
                                     <span x-text="tag.name"></span>
@@ -172,7 +172,7 @@
                             <div class="space-y-1 pt-1.5 border-t border-gray-800/60">
                                 <div class="flex flex-wrap gap-x-1 gap-y-1">
                                     <template x-for="tag in getSortedTags(removedLhsTags)" :key="tag.category + ':' + tag.name">
-                                        <span @click="restoreTag(tag)"
+                                        <span @click="addTagWithImplications(tag.name)"
                                               class="font-mono text-[11px] leading-tight inline-flex items-center px-1.5 py-0.5 rounded bg-gray-950 text-gray-600 line-through border border-gray-800 cursor-pointer hover:text-gray-300 hover:no-underline"
                                               title="Click to restore">
                                             <span x-text="tag.name"></span>
@@ -190,7 +190,7 @@
                         <span class="text-[11px] font-semibold text-gray-400">Rating:</span>
                         <div class="flex bg-gray-900 border border-gray-800 rounded p-0.5 gap-1">
                             <template x-for="r in ['s', 'q', 'e']" :key="r">
-                                <button @click="setRating(r)"
+                                <button @click="activeRating = r"
                                         class="text-xs px-2 py-0.5 rounded font-bold uppercase transition"
                                         :class="activeRating === r 
                                             ? (r === 's' ? 'bg-green-500 text-green-950' : (r === 'q' ? 'bg-amber-500 text-amber-950' : 'bg-red-500 text-red-950')) 
@@ -220,21 +220,21 @@
 
             <!-- RHS: Comparison Posts Card List -->
             <div class="space-y-4">
-                <template x-for="post in rhsPosts" :key="post.id || post.post_id">
+                <template x-for="post in rhsPosts" :key="post.post_id">
                     <div class="bg-gray-950 border border-gray-800/80 rounded-md p-3.5 text-xs space-y-3">
                         
                         <!-- Post Header Line -->
                         <div class="flex items-center justify-between">
                             <div class="flex items-center space-x-2">
-                                <template x-if="post.rating || post.rating_letter">
+                                <template x-if="post.rating">
                                     <span class="px-1.5 py-0.5 rounded text-[11px] font-bold font-mono"
-                                          :class="getRatingBadgeClass(post.rating || post.rating_letter)"
-                                          x-text="getRatingLabel(post.rating || post.rating_letter)"></span>
+                                          :class="$store.tags.getRatingBadgeClass(post.rating)"
+                                          x-text="$store.tags.getRatingLabel(post.rating)"></span>
                                 </template>
 
-                                <a :href="`https://e621.net/posts/${post.id || post.post_id}`" target="_blank"
+                                <a :href="`https://e621.net/posts/${post.post_id}`" target="_blank"
                                    class="font-mono font-bold text-blue-400 hover:text-blue-300 hover:underline text-sm flex items-center space-x-1">
-                                    <span x-text="`#${post.id || post.post_id}`"></span>
+                                    <span x-text="`#${post.post_id}`"></span>
                                     <span class="text-gray-600 text-xs">&nearr;</span>
                                 </a>
 
@@ -247,9 +247,9 @@
                             </div>
 
                             <div class="flex items-center space-x-2">
-                                <template x-if="(post.file?.width || post.image_width) && (post.file?.height || post.image_height)">
+                                <template x-if="(post.image_width) && (post.image_height)">
                                     <span class="font-mono text-[11px] text-gray-400"
-                                          x-text="`${post.file?.width || post.image_width}x${post.file?.height || post.image_height} ${post.file?.ext || post.image_format || ''}`">
+                                          x-text="`${post.image_width}x${post.image_height} ${post.image_format || ''}`">
                                     </span>
                                 </template>
 
@@ -291,8 +291,8 @@
                                                   'bg-amber-600/20! text-amber-200! border-dashed! border-amber-400/20!': hoveredImplicationData.indirectImplicators.has(tag.name)
                                               } : {})
                                           }"
-                                          :style="(hoveredImplicationData && hoveredImplicationData.postId === (post.id || post.post_id) && (hoveredImplicationData.tagName === tag.name || hoveredImplicationData.directImplied.has(tag.name) || hoveredImplicationData.indirectImplied.has(tag.name) || hoveredImplicationData.directImplicators.has(tag.name) || hoveredImplicationData.indirectImplicators.has(tag.name))) ? '' : getTagStyle(tag.category)"
-                                          @click="if(!isTagOnLhs(tag.name)) copyTagToLhsWithImplications(tag)"
+                                          :style="(hoveredImplicationData && hoveredImplicationData.postId === (post.id || post.post_id) && (hoveredImplicationData.tagName === tag.name || hoveredImplicationData.directImplied.has(tag.name) || hoveredImplicationData.indirectImplied.has(tag.name) || hoveredImplicationData.directImplicators.has(tag.name) || hoveredImplicationData.indirectImplicators.has(tag.name))) ? '' : $store.tags.getTagStyle(tag.category)"
+                                          @click="if(!isTagOnLhs(tag.name)) addTagWithImplications(tag.name)"
                                           @mouseenter="hoveredImplicationData = getImplicationChain(post.id || post.post_id, tag.name, post)"
                                           @mouseleave="hoveredImplicationData = null">
                                         <span x-text="tag.name"></span>

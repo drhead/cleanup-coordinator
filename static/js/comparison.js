@@ -1,6 +1,6 @@
 // @ts-check
 
-import { fetchPostFileUrls } from './e621_api.js';
+import { ensureClusterPostsInfo } from './e621_api.js';
 import { showToast } from './toasts.js';
 
 /** @type {any} */
@@ -151,15 +151,8 @@ export function ComparisonManager(cluster) {
             this.isLoading = true;
 
             try {
-                const postIds = cluster.posts.map(p => p.post_id);
-                this.fetchedPostsMap = await fetchPostFileUrls(postIds);
-
-                // Populate posts with fileUrl from API map
-                for (const post of cluster.posts) {
-                    if (this.fetchedPostsMap.has(post.post_id)) {
-                        post.fileUrl = this.fetchedPostsMap.get(post.post_id);
-                    }
-                }
+                // Populate post details (fileUrl, description, sources) in-place
+                await ensureClusterPostsInfo(cluster.posts);
 
                 const availableClusterPosts = cluster.posts.filter(p => !!p.fileUrl);
 

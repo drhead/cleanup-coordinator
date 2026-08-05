@@ -59,7 +59,7 @@ document.addEventListener('alpine:init', () => {
 
         /**
          * Helper when a user clicks a project in the UI
-         * @param {number} projectId
+         * @param {string} projectId
          */
         selectProject(projectId) {
             /** @type {import('./batches.js').BatchManager} */ (Alpine.store('batches')).selectProject(this.projects, projectId);
@@ -67,7 +67,7 @@ document.addEventListener('alpine:init', () => {
         },
         /**
          * Views batch detail and switches screen
-         * @param {number} batch
+         * @param {Batch} batch
          */
         viewBatch(batch) {
             /** @type {import('./batches.js').BatchManager} */ (Alpine.store('batches')).viewBatchDetail(batch);

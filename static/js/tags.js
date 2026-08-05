@@ -17,35 +17,48 @@ const CATEGORY_MAP = {
 };
 
 /**
- * @typedef {Object} ImplicationEntry
+ * @typedef {Object} TagInfo
  * @property {string[]} [implies]
  * @property {string[]} [implied_by]
+ * @property {TagCategory} category
+ * @property {number} tag_count
  */
 
 /**
- * @typedef {Record<string, ImplicationEntry>} ImplicationMap
+ * @typedef {Record<string, TagInfo>} TagInfoMap
  */
 
 export class TagManager {
     constructor() {
-        /** @type {ImplicationMap} */
-        this.implications = {};
-        this.hasImplications = false;
-
-        /** @type {Record<string, any>} */
-        this.tagData = {};
-        this.hasTagData = false;
+        /** @type {TagInfoMap} */
+        this.tagInfoMap = {};
+        this.isLoaded = false;
 
         // --- Loading Screen Hooks ---
         this.isLoading = false;
-        this.isLoaded = false;
         this.loadingProgress = 0; // 0 to 100%
         this.loadingStatus = 'Idle'; // Text feedback for UI
         this.error = null;
     }
 
     /**
-     * Initializes and loads all MessagePack data files.
+     * Ensures an entry exists for a given tag in tagInfoMap.
+     * @private
+     * @param {string} tag
+     * @returns {TagInfo}
+     */
+    _ensureTagInfo(tag) {
+        if (!this.tagInfoMap[tag]) {
+            this.tagInfoMap[tag] = {
+                category: 'GENERAL',
+                tag_count: 0
+            };
+        }
+        return this.tagInfoMap[tag];
+    }
+
+    /**
+     * Initializes and loads all MessagePack data files into a single unified map.
      * Includes state updates for loading screens/progress bars.
      */
     async init() {
@@ -72,8 +85,13 @@ export class TagManager {
 
             if (implRes && implRes.ok) {
                 const implBuffer = await implRes.arrayBuffer();
-                this.implications = /** @type {ImplicationMap} */ (decode(implBuffer)) || {};
-                this.hasImplications = true;
+                const rawImpl = /** @type {Record<string, { implies?: string[], implied_by?: string[] }>} */ (decode(implBuffer)) || {};
+
+                for (const [tag, data] of Object.entries(rawImpl)) {
+                    const info = this._ensureTagInfo(tag);
+                    if (data.implies) info.implies = data.implies;
+                    if (data.implied_by) info.implied_by = data.implied_by;
+                }
             }
 
             this.loadingProgress = 80;
@@ -81,8 +99,13 @@ export class TagManager {
 
             if (tagsRes && tagsRes.ok) {
                 const tagsBuffer = await tagsRes.arrayBuffer();
-                this.tagData = decode(tagsBuffer) || {};
-                this.hasTagData = true;
+                const rawTags = /** @type {Record<string, [number, number]>} */ (decode(tagsBuffer)) || {};
+
+                for (const [tag, [catId, count]] of Object.entries(rawTags)) {
+                    const info = this._ensureTagInfo(tag);
+                    info.category = CATEGORY_MAP[catId] || 'GENERAL';
+                    info.tag_count = count ?? 0;
+                }
             }
 
             this.loadingProgress = 100;
@@ -108,15 +131,7 @@ export class TagManager {
         const categorized = {};
 
         for (const tag of flatTags) {
-            /** @type {TagCategory} */
-            let catName = 'GENERAL';
-
-            if (this.hasTagData && this.tagData[tag]) {
-                const catId = this.tagData[tag][0];
-                /** @type {TagCategory} */
-                catName = CATEGORY_MAP[catId] || 'GENERAL';
-            }
-
+            const catName = this.tagInfoMap[tag]?.category || 'GENERAL';
             (categorized[catName] ??= []).push(tag);
         }
 
@@ -183,7 +198,7 @@ export class TagManager {
      */
     sortCategoryTags(tags) {
         if (!tags || tags.length <= 1) return tags ? tags.slice() : [];
-        if (!this.hasImplications) {
+        if (!this.isLoaded) {
             return tags.slice().sort((a, b) => a.localeCompare(b));
         }
 
@@ -206,7 +221,7 @@ export class TagManager {
         }
 
         for (const u of tags) {
-            const directImplied = this.implications[u]?.implies || [];
+            const directImplied = this.tagInfoMap[u]?.implies || [];
             for (const v of directImplied) {
                 if (tagSet.has(v)) {
                     adj[u].push(v);
@@ -347,12 +362,12 @@ export class TagManager {
      * @param {string[]} flatTags
      */
     isImpliedTag(tagName, flatTags) {
-        if (!this.implications || !tagName) return false;
-        const implData = this.implications[tagName];
+        if (!tagName) return false;
+        const implData = this.tagInfoMap[tagName];
         if (!implData || !implData.implied_by || implData.implied_by.length === 0) return false;
 
         const allPostTags = new Set(flatTags);
-        return implData.implied_by.some((/** @type {string} */ implicator) => allPostTags.has(implicator));
+        return implData.implied_by.some((implicator) => allPostTags.has(implicator));
     }
 
     /**
@@ -361,12 +376,12 @@ export class TagManager {
      * @param {string[]} flatTags
      */
     getImplicationChain(postId, tagName, flatTags) {
-        if (!this.implications || !tagName) return null;
+        if (!tagName) return null;
 
         const allPostTags = new Set(flatTags);
 
-        const directImplied = (this.implications[tagName]?.implies || []).filter(t => allPostTags.has(t));
-        const directImplicators = (this.implications[tagName]?.implied_by || []).filter(t => allPostTags.has(t));
+        const directImplied = (this.tagInfoMap[tagName]?.implies || []).filter(t => allPostTags.has(t));
+        const directImplicators = (this.tagInfoMap[tagName]?.implied_by || []).filter(t => allPostTags.has(t));
 
         /** @type {string[]} */
         const indirectImplied = [];
@@ -376,7 +391,7 @@ export class TagManager {
         while (queueImplied.length > 0) {
             const current = queueImplied.shift();
             if (!current) continue;
-            const children = this.implications[current]?.implies || [];
+            const children = this.tagInfoMap[current]?.implies || [];
             for (const child of children) {
                 if (allPostTags.has(child) && !visitedImplied.has(child)) {
                     visitedImplied.add(child);
@@ -394,7 +409,7 @@ export class TagManager {
         while (queueImplicators.length > 0) {
             const current = queueImplicators.shift();
             if (!current) continue;
-            const parents = this.implications[current]?.implied_by || [];
+            const parents = this.tagInfoMap[current]?.implied_by || [];
             for (const parent of parents) {
                 if (allPostTags.has(parent) && !visitedImplicators.has(parent)) {
                     visitedImplicators.add(parent);
@@ -415,7 +430,7 @@ export class TagManager {
     }
 
     /**
-     * @param {string} category
+     * @param {TagCategory} category
      */
     getTagStyle(category) {
         const cat = (category || '').toUpperCase();
@@ -442,7 +457,7 @@ export class TagManager {
     }
 
     /**
-     * @param {string} rating
+     * @param {PostRating} rating
      */
     getRatingBadgeClass(rating) {
         const r = (rating || '').toLowerCase();
@@ -453,7 +468,7 @@ export class TagManager {
     }
 
     /**
-     * @param {string} rating
+     * @param {PostRating} rating
      */
     getRatingLabel(rating) {
         const r = (rating || '').toLowerCase();

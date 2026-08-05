@@ -1,17 +1,8 @@
 // @ts-check
 
-import Alpine from 'alpinejs';
 import { decode } from '@msgpack/msgpack';
 import { getBlacklistEvaluator, applyBlacklistToCluster } from './blacklist.js';
 import { showToast } from './toasts.js';
-
-/**
- * @typedef {Object} Lease
- * @property {number|string} batch_id
- * @property {number} batch_number
- * @property {number|string} project_id
- * @property {string} leased_until
- */
 
 /**
  * Pure formatting function for ISO lease expiration string -> "MM:SS"
@@ -33,7 +24,7 @@ export function getRemainingTimeString(nowTimestamp, isoDateStr) {
 
 /**
  * Prepares cluster posts for blacklisting, sorting, and state flags.
- * @param {any} c
+ * @param {Cluster} c
  * @param {boolean} [forceReset=false]
  */
 export function processCluster(c, forceReset = false) {
@@ -46,7 +37,7 @@ export function processCluster(c, forceReset = false) {
 
 /**
  * Pure display helper for batch status labels.
- * @param {any} batch
+ * @param {Batch} batch
  * @returns {string}
  */
 export function getBatchStatusLabel(batch) {
@@ -59,7 +50,7 @@ export function getBatchStatusLabel(batch) {
 
 /**
  * Pure display helper for batch status Tailwind CSS classes.
- * @param {any} batch
+ * @param {Batch} batch
  * @returns {string}
  */
 export function getBatchStatusClass(batch) {
@@ -89,7 +80,7 @@ export function getProgressPercent(resolved, total) {
 
 /**
  * Safely reads resolved cluster count from a project.
- * @param {any} project
+ * @param {Project} project
  * @returns {number}
  */
 export function getProjectResolvedCount(project) {
@@ -98,7 +89,7 @@ export function getProjectResolvedCount(project) {
 
 /**
  * Safely reads total cluster count from a project.
- * @param {any} project
+ * @param {Project} project
  * @returns {number}
  */
 export function getProjectTotalCount(project) {
@@ -107,19 +98,19 @@ export function getProjectTotalCount(project) {
 
 export class BatchManager {
     constructor() {
-        /** @type {any} */
+        /** @type {Project|null} */
         this.activeProject = null;
-        /** @type {any[]} */
+        /** @type {Batch[]} */
         this.batches = [];
-        /** @type {any} */
+        /** @type {Batch|null} */
         this.activeBatch = null;
         /** @type {Lease|null} */
         this.activeLease = null;
         /** @type {number} */
         this.nowTimestamp = Date.now();
-        /** @type {any} */
+        /** @type {NodeJS.Timeout|null} */
         this.pollInterval = null;
-        /** @type {any} */
+        /** @type {NodeJS.Timeout|null} */
         this.timerInterval = null;
     }
 
@@ -184,8 +175,8 @@ export class BatchManager {
 
     /**
      * Selects an active project and reloads its associated batches.
-     * @param {any[]} projects
-     * @param {number|string} projectId
+     * @param {Project[]} projects
+     * @param {string} projectId
      */
     selectProject(projects, projectId) {
         this.activeProject = (projects || []).find(p => p.project_id === projectId) || null;
@@ -195,7 +186,7 @@ export class BatchManager {
     /**
      * Fetches batches and active leases, updating state and reconciling cluster data in-place.
      * @param {boolean} [silent=false]
-     * @param {number|string|null} [refreshedClusterId=null]
+     * @param {number|null} [refreshedClusterId=null]
      * @param {boolean} [forceCollapseReset=false]
      */
     async reloadBatches(silent = false, refreshedClusterId = null, forceCollapseReset = false) {
@@ -212,16 +203,16 @@ export class BatchManager {
             if (!batchesRes.ok) return;
 
             const batchesBuffer = await batchesRes.arrayBuffer();
-            /** @type {any} */
-            const batchesData = decode(batchesBuffer);
 
-            const activeLeases = leasesRes.ok ? (await leasesRes.json()).leases || [] : [];
+            const batchesData = /** @type {{ batches: Batch[] }} */ (decode(batchesBuffer));
+
+            const activeLeases = leasesRes.ok ? /** @type {{ leases: Lease[] }} */ (await leasesRes.json()).leases || [] : [];
             const incomingBatches = batchesData.batches || [];
 
             if (this.batches.length === 0) {
-                incomingBatches.forEach((/** @type {any} */ b) => {
+                incomingBatches.forEach((b) => {
                     if (b.clusters) {
-                        b.clusters.forEach((/** @type {any} */ c) => {
+                        b.clusters.forEach((c) => {
                             processCluster(c);
                             c.isRefreshing = false;
                         });
@@ -235,7 +226,7 @@ export class BatchManager {
                     let existingBatch = this.batches.find(b => b.batch_id === newBatch.batch_id);
                     if (!existingBatch) {
                         if (newBatch.clusters) {
-                            newBatch.clusters.forEach((/** @type {any} */ c) => {
+                            newBatch.clusters.forEach((c) => {
                                 processCluster(c);
                                 c.isRefreshing = false;
                             });
@@ -261,7 +252,7 @@ export class BatchManager {
                     if (isCurrentlyInspecting && newBatch.clusters) {
                         for (let i = 0; i < newBatch.clusters.length; i++) {
                             const newCluster = newBatch.clusters[i];
-                            let existingCluster = existingBatch.clusters.find((/** @type {any} */ c) => c.cluster_id === newCluster.cluster_id);
+                            let existingCluster = existingBatch.clusters.find((c) => c.cluster_id === newCluster.cluster_id);
 
                             if (existingCluster) {
                                 existingCluster.note = newCluster.note;
@@ -272,9 +263,9 @@ export class BatchManager {
                                 if (refreshedClusterId === existingCluster.cluster_id) {
                                     existingCluster.posts = newCluster.posts || [];
                                 } else if (newCluster.posts && Array.isArray(newCluster.posts)) {
-                                    const existingPostsMap = new Map((existingCluster.posts || []).map((/** @type {any} */ p) => [p.post_id, p]));
+                                    const existingPostsMap = new Map((existingCluster.posts || []).map((p) => [p.post_id, p]));
 
-                                    existingCluster.posts = newCluster.posts.map((/** @type {any} */ newPost) => {
+                                    existingCluster.posts = newCluster.posts.map((newPost) => {
                                         const existingPost = existingPostsMap.get(newPost.post_id);
 
                                         if (existingPost) {
@@ -314,14 +305,15 @@ export class BatchManager {
                 if (found) this.activeBatch = found;
             }
 
-            const myLease = activeLeases.find((/** @type {any} */ l) => l.project_id === this.activeProject?.project_id && l.is_leased_by_you);
+            const myLease = activeLeases.find((l) => l.project_id === this.activeProject?.project_id && l.is_leased_by_you);
             if (myLease) {
                 const expiry = new Date(myLease.leased_until).getTime();
                 this.activeLease = expiry > this.nowTimestamp ? {
                     batch_id: myLease.batch_id,
                     batch_number: myLease.batch_number,
                     project_id: myLease.project_id,
-                    leased_until: myLease.leased_until
+                    leased_until: myLease.leased_until,
+                    is_leased_by_you: myLease.is_leased_by_you
                 } : null;
             } else {
                 this.activeLease = null;
@@ -347,7 +339,7 @@ export class BatchManager {
 
     /**
      * Sets active batch for detail viewing.
-     * @param {any} batch
+     * @param {Batch} batch
      */
     viewBatchDetail(batch) {
         this.activeBatch = batch;
@@ -368,9 +360,9 @@ export class BatchManager {
                 });
                 if (!res.ok) return;
                 const buf = await res.arrayBuffer();
-                /** @type {any} */
-                const data = decode(buf);
-                this.batches = data.batches || [];
+                
+                const data = /** @type {{ batches: Batch[] }} */ (decode(buf));
+                this.batches = data.batches;
                 const found = this.batches.find(b => b.batch_id === lease.batch_id);
                 if (found) this.viewBatchDetail(found);
             } catch (err) {
@@ -409,7 +401,8 @@ export class BatchManager {
                 batch_id: data.batch_id,
                 batch_number: this.activeBatch.batch_number,
                 project_id: this.activeProject.project_id,
-                leased_until: data.leased_until
+                leased_until: data.leased_until,
+                is_leased_by_you: true
             };
 
             await this.reloadBatches();
@@ -422,7 +415,7 @@ export class BatchManager {
 
     /**
      * Revokes an existing batch lease.
-     * @param {number|string} batchId
+     * @param {number} batchId
      */
     async revokeLease(batchId) {
         try {
@@ -445,7 +438,7 @@ export class BatchManager {
 
     /**
      * Triggers a batch refresh request on the backend.
-     * @param {any} batch
+     * @param {Batch} batch
      */
     async refreshBatch(batch) {
         if (!batch || batch.isRefreshing) return;
