@@ -107,6 +107,13 @@ declare global {
     id: number;
   }
 
+  interface TagSearchResult {
+    name: string;
+    category: TagCategory;
+    count: number;
+    aliasedFrom?: string
+  }
+
 }
 
 export {};

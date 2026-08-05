@@ -158,3 +158,8 @@ async def get_tag_implications(request: Request) -> Response:
 @router.get("/static/data/tags.msgpack")
 async def get_tags(request: Request) -> Response:
     return await serve_static_msgpack("tags.msgpack", request)
+
+
+@router.get("/static/data/tags_bundle.msgpack")
+async def get_tags_bundle(request: Request) -> Response:
+    return await serve_static_msgpack("tags_bundle.msgpack", request)

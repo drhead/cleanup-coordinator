@@ -206,14 +206,66 @@
                         </template>
                     </div>
 
-                    <div class="flex items-center gap-1.5 flex-1 max-w-55">
-                        <input type="text" x-model="tagInput" @keydown.enter.prevent="addCustomTag()"
-                            placeholder="Add tag..."
-                            class="flex-1 text-xs bg-gray-950 border border-gray-800 rounded px-2 py-1 text-gray-200 focus:outline-none focus:border-blue-500">
-                        <button type="button" @click="addCustomTag()"
-                                class="text-xs px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded font-semibold transition">
-                            Add
-                        </button>
+                    <div class="relative flex-1 min-w-[280px] max-w-xs"
+                        x-data="tagAutocomplete()"
+                        @add-tag="addCustomTag()"
+                        @click.outside="isOpen = false">
+                        
+                        <!-- Input & Add Button -->
+                        <div class="flex items-center gap-1.5 w-full">
+                            <input type="text" 
+                                x-model="tagInput" 
+                                @input="onInput"
+                                @keydown.enter.prevent="selectCurrentOrAdd()"
+                                @keydown.arrow-down.prevent="navigate(1)"
+                                @keydown.arrow-up.prevent="navigate(-1)"
+                                @keydown.escape.prevent="isOpen = false"
+                                placeholder="Add tag..."
+                                class="flex-1 text-xs bg-gray-950 border border-gray-800 rounded px-2 py-1 text-gray-200 focus:outline-none focus:border-blue-500 min-w-0">
+                            
+                            <button type="button" 
+                                    @click="commitTag()"
+                                    class="text-xs px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded font-semibold transition shrink-0">
+                                Add
+                            </button>
+                        </div>
+
+                        <!-- Drop-up Results Menu -->
+                        <div x-show="isOpen && results.length > 0"
+                            x-transition
+                            class="absolute bottom-full mb-1 left-0 right-0 min-w-[340px] z-50 bg-gray-950 border border-gray-800 rounded shadow-2xl max-h-72 overflow-y-auto divide-y divide-gray-900"
+                            style="display: none;">
+                            
+                            <template x-for="(item, index) in results" :key="item.aliasedFrom ? item.aliasedFrom + '->' + item.name : item.name">
+                                <div @click="selectResult(item)"
+                                    @mouseenter="selectedIndex = index"
+                                    :class="{ 'bg-gray-800': selectedIndex === index }"
+                                    class="flex items-center justify-between px-2.5 py-1.5 text-xs cursor-pointer hover:bg-gray-800 transition-colors gap-3">
+                                    
+                                    <div class="truncate flex items-center gap-1 min-w-0" 
+                                        :title="item.aliasedFrom ? `${item.aliasedFrom} → ${item.name}` : item.name">
+                                        
+                                        <template x-if="item.aliasedFrom">
+                                            <span class="flex items-center gap-1 truncate shrink-0 max-w-[45%]">
+                                                <span :style="$store.tags.getTagStyle('INVALID')" 
+                                                    class="truncate" 
+                                                    x-text="item.aliasedFrom"></span>
+                                                <span class="text-gray-500 select-none">→</span>
+                                            </span>
+                                        </template>
+                                        
+                                        <span :style="$store.tags.getTagStyle(item.category)" 
+                                            class="truncate min-w-0" 
+                                            x-text="item.name"></span>
+                                    </div>
+
+                                    <span class="text-gray-400 font-mono text-[11px] shrink-0 pl-1"
+                                        :title="`${item.count.toLocaleString()} posts`">
+                                        (<span x-text="formatCount(item.count)"></span>)
+                                    </span>
+                                </div>
+                            </template>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -384,4 +384,110 @@ document.addEventListener('alpine:init', () => {
     if (window.Alpine) {
         window.Alpine.data('ReconciliationManager', ReconciliationManager);
     }
+
+    Alpine.data('tagAutocomplete', () => ({
+        /** @type {TagSearchResult[]} */
+        results: [],
+        isOpen: false,
+        selectedIndex: -1,
+        /** @type {ReturnType<setTimeout>|undefined} */
+        debounceTimer: undefined,
+
+        /**
+         * Debounced input handler (300ms delay)
+         */
+        onInput() {
+            clearTimeout(this.debounceTimer);
+            this.selectedIndex = -1;
+
+            /** @type {string} */
+            // @ts-expect-error - tagInput is inherited from parent scope in Alpine
+            const inputVal = this.tagInput || '';
+
+            if (!inputVal.trim()) {
+                this.results = [];
+                this.isOpen = false;
+                return;
+            }
+
+            this.debounceTimer = setTimeout(() => {
+                this.fetchResults(inputVal, 20);
+            }, 300);
+        },
+
+        /**
+         * Executes search using TagManager binary index
+         * @param {string} query
+         * @param {number} k
+         */
+        fetchResults(query, k = 10) {
+            this.results = tagManager.searchTags(query, k);
+            this.isOpen = this.results.length > 0;
+        },
+
+        /**
+         * Keyboard navigation (Up / Down arrows)
+         * @param {number} direction
+         */
+        navigate(direction) {
+            if (!this.isOpen || this.results.length === 0) return;
+            
+            this.selectedIndex += direction;
+            if (this.selectedIndex < 0) {
+                this.selectedIndex = this.results.length - 1;
+            } else if (this.selectedIndex >= this.results.length) {
+                this.selectedIndex = 0;
+            }
+        },
+
+        /**
+         * Triggers when pressing Enter in input
+         */
+        selectCurrentOrAdd() {
+            if (this.isOpen && this.selectedIndex >= 0 && this.results[this.selectedIndex]) {
+                this.selectResult(this.results[this.selectedIndex]);
+            } else {
+                this.commitTag();
+            }
+        },
+
+        /**
+         * Selects a result item, updates input, and triggers add
+         * @param {TagSearchResult} tagObj
+         */
+        selectResult(tagObj) {
+            // Update tagInput in parent Alpine scope
+            // @ts-expect-error - tagInput is inherited from parent scope
+            this.tagInput = tagObj.name;
+            this.isOpen = false;
+            this.results = [];
+            
+            this.commitTag();
+        },
+
+        /**
+         * Safe dispatcher to trigger tag addition on parent scope
+         */
+        commitTag() {
+            /** @type {import('alpinejs').AlpineComponent<any>} */
+            // @ts-ignore - $dispatch is an Alpine magic property
+            const el = this;
+
+            if (typeof el.$dispatch === 'function') {
+                el.$dispatch('add-tag');
+            } else if (typeof el.addCustomTag === 'function') {
+                el.addCustomTag();
+            }
+        },
+
+        /**
+         * Formats large counts cleanly (e.g. 12500 -> 12.5k)
+         * @param {number} count
+         */
+        formatCount(count) {
+            if (count >= 1000000) return (count / 1000000).toFixed(1) + 'M';
+            if (count >= 1000) return (count / 1000).toFixed(1) + 'k';
+            return count.toString();
+        }
+    }));
 });

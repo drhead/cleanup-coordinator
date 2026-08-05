@@ -12,6 +12,7 @@ import {
     getProjectTotalCount
 } from './batches.js';
 
+import { ImageModalComponent } from './image_modal.js';
 import { ComparisonManager } from './comparison.js';
 import { ReconciliationManager } from './reconciliation.js';
 
@@ -79,6 +80,7 @@ document.addEventListener('alpine:init', () => {
 });
 
 // Register Alpine components explicitly
+Alpine.data('ImageModalComponent', ImageModalComponent);
 Alpine.data('ComparisonManager', ComparisonManager);
 Alpine.data('ReconciliationManager', ReconciliationManager);
 

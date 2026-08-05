@@ -18,11 +18,12 @@ TAGS_EXPORT_URL = "https://static1.e621.net/data/db_export/tags.csv.gz"
 IMPLICATIONS_EXPORT_URL = (
     "https://static1.e621.net/data/db_export/tag_implications.csv.gz"
 )
+ALIASES_EXPORT_URL = (
+    "https://static1.e621.net/data/db_export/tag_aliases.csv.gz"
+)
 
-OUTPUT_IMPLICATIONS_MSGPACK = Path("static/data/tag_implications.msgpack")
-OUTPUT_TAGS_MSGPACK = Path("static/data/tags.msgpack")
-
-OUTPUT_IMPLICATIONS_MSGPACK.parent.mkdir(parents=True, exist_ok=True)
+OUTPUT_CONSOLIDATED_MSGPACK = Path("static/data/tags_bundle.msgpack")
+OUTPUT_CONSOLIDATED_MSGPACK.parent.mkdir(parents=True, exist_ok=True)
 
 # Map integer category IDs to DB string categories
 CATEGORY_MAP = {
@@ -36,6 +37,14 @@ CATEGORY_MAP = {
     7: "meta",
     8: "lore",
 }
+
+
+class TagMetadata(msgspec.Struct):
+    category: int
+    count: int
+    implied_by: list[str] = []
+    implies: list[str] = []
+    alias_to: str | None = None
 
 
 def write_precompressed_assets(base_path: Path, raw_bytes: bytes) -> None:
@@ -53,23 +62,112 @@ def write_precompressed_assets(base_path: Path, raw_bytes: bytes) -> None:
     br_tmp.replace(br_target)
 
 
-async def sync_daily_tags_export() -> None:
-    logger.info("Starting tags sync...")
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.get(TAGS_EXPORT_URL, follow_redirects=True)
-            response.raise_for_status()
+def resolve_alias_target(
+    initial_tag: str, direct_aliases: dict[str, str]
+) -> str | None:
+    """Recursively resolves an alias target to handle alias chains (e.g. A -> B -> C).
+    
+    Includes cycle detection to protect against circular alias references in DB export.
+    """
+    current = initial_tag
+    visited: set[str] = set()
 
-        logger.info("Downloaded tags export. Decompressing and parsing CSV...")
-        decompressed = gzip.decompress(response.content)
-        csv_reader = csv.DictReader(io.StringIO(decompressed.decode("utf-8")))
+    while current in direct_aliases:
+        if current in visited:
+            logger.warning(f"Circular alias detected involving tag: '{current}'")
+            break
+        visited.add(current)
+        current = direct_aliases[current]
+
+    return current if current != initial_tag else None
+
+
+async def sync_daily_tags_bundle() -> None:
+    logger.info("Starting consolidated tags data sync...")
+    try:
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            # Step 1: Download all exports in parallel
+            logger.info("Downloading tags, implications, and aliases dumps...")
+            res_tags, res_impl, res_alias = await asyncio.gather(
+                client.get(TAGS_EXPORT_URL, follow_redirects=True),
+                client.get(IMPLICATIONS_EXPORT_URL, follow_redirects=True),
+                client.get(ALIASES_EXPORT_URL, follow_redirects=True),
+            )
+
+            res_tags.raise_for_status()
+            res_impl.raise_for_status()
+            res_alias.raise_for_status()
+
+        # ------------------------------------------------------------------
+        # 1. Parse Aliases (antecedent -> consequent)
+        # ------------------------------------------------------------------
+        logger.info("Parsing active tag aliases...")
+        decomp_alias = gzip.decompress(res_alias.content)
+        alias_reader = csv.DictReader(io.StringIO(decomp_alias.decode("utf-8")))
+
+        raw_aliases: dict[str, str] = {}
+        for row in alias_reader:
+            status = row.get("status", "").lower()
+            if status and status != "active":
+                continue
+
+            antecedent = row.get("antecedent_name")
+            consequent = row.get("consequent_name")
+            if antecedent and consequent:
+                raw_aliases[antecedent] = consequent
+
+        # Resolve multi-hop/chained aliases (A -> B -> C resolves to A -> C)
+        resolved_aliases: dict[str, str] = {}
+        for tag in raw_aliases:
+            final_target = resolve_alias_target(tag, raw_aliases)
+            if final_target:
+                resolved_aliases[tag] = final_target
+
+        logger.info(f"Resolved {len(resolved_aliases)} active tag aliases.")
+
+        # ------------------------------------------------------------------
+        # 2. Parse Implications
+        # ------------------------------------------------------------------
+        logger.info("Parsing active tag implications...")
+        decomp_impl = gzip.decompress(res_impl.content)
+        impl_reader = csv.DictReader(io.StringIO(decomp_impl.decode("utf-8")))
+
+        implies_map: dict[str, list[str]] = {}
+        implied_by_map: dict[str, list[str]] = {}
+
+        for row in impl_reader:
+            status = row.get("status", "").lower()
+            if status and status != "active":
+                continue
+
+            antecedent = row.get("antecedent_name")
+            consequent = row.get("consequent_name")
+
+            if not antecedent or not consequent:
+                continue
+
+            implies_map.setdefault(antecedent, []).append(consequent)
+            implied_by_map.setdefault(consequent, []).append(antecedent)
+
+        # ------------------------------------------------------------------
+        # 3. Parse Base Tags & Sync Postgres DB
+        # ------------------------------------------------------------------
+        logger.info("Parsing tags CSV and updating Postgres database...")
+        decomp_tags = gzip.decompress(res_tags.content)
+        tags_reader = csv.DictReader(io.StringIO(decomp_tags.decode("utf-8")))
 
         tag_names: list[str] = []
         categories: list[int] = []
         post_counts: list[int] = []
-        lean_tags_data: dict[str, list[int]] = {}
 
-        for row in csv_reader:
+        # Intermediate lookup map before consolidation
+        base_tags_map: dict[str, tuple[int, int]] = {}
+
+        for row in tags_reader:
+            tag_name = row.get("name", "")
+            if not tag_name:
+                continue
+
             try:
                 cat_id = int(row.get("category", 0))
             except ValueError:
@@ -78,24 +176,18 @@ async def sync_daily_tags_export() -> None:
             if cat_id < 0 or cat_id > 8:
                 cat_id = 0
 
-            tag_name = row.get("name", "")
-
             try:
                 post_count = int(row.get("post_count", 0))
             except ValueError:
                 post_count = 0
 
-            if not tag_name:
-                continue
-
             tag_names.append(tag_name)
             categories.append(cat_id)
             post_counts.append(post_count)
 
-            if cat_id != 6:
-                lean_tags_data[tag_name] = [cat_id, post_count]
+            base_tags_map[tag_name] = (cat_id, post_count)
 
-        # 1. Update DB Table using unnest
+        # 1. Execute DB Update
         pool = get_db()
         async with pool.acquire() as conn:
             async with conn.transaction():
@@ -112,80 +204,61 @@ async def sync_daily_tags_export() -> None:
                     post_counts,
                 )
 
-        # 2. Write raw static MessagePack asset atomically
-        raw_bytes = msgspec.msgpack.encode(lean_tags_data)
-        temp_msgpack_path = OUTPUT_TAGS_MSGPACK.with_suffix(".msgpack.tmp")
-        temp_msgpack_path.write_bytes(raw_bytes)
-        temp_msgpack_path.replace(OUTPUT_TAGS_MSGPACK)
+        # ------------------------------------------------------------------
+        # 4. Consolidate into TagMetadata and Apply Pruning Rules
+        # ------------------------------------------------------------------
+        logger.info("Consolidating tag graph into unified TagMetadata dict...")
 
-        # 3. Pre-compress .gz and .br variants
-        logger.info("Pre-compressing static tags asset with Gzip and Brotli (q=11)...")
-        write_precompressed_assets(OUTPUT_TAGS_MSGPACK, raw_bytes)
-
-        logger.info(
-            f"Successfully synced {len(tag_names)} DB tags and wrote pre-compressed assets for "
-            f"{len(lean_tags_data)} active tags -> {OUTPUT_TAGS_MSGPACK}"
+        # Find all unique tag names across tags, aliases, and implications
+        all_known_tags = (
+            set(base_tags_map.keys())
+            | set(resolved_aliases.keys())
+            | set(implies_map.keys())
+            | set(implied_by_map.keys())
         )
-    except Exception as e:
-        logger.error(f"Failed to sync tags: {e}", exc_info=True)
 
+        consolidated_bundle: dict[str, TagMetadata] = {}
 
-async def sync_daily_implications_export() -> None:
-    logger.info("Starting tag implications sync...")
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.get(
-                IMPLICATIONS_EXPORT_URL, follow_redirects=True
+        for tag in all_known_tags:
+            cat_id, count = base_tags_map.get(tag, (0, 0))
+            alias_to = resolved_aliases.get(tag)
+
+            # Rule: Drop if NO alias_to AND (count == 0 OR category == 6 (invalid))
+            if alias_to is None and (count == 0 or cat_id == 6):
+                continue
+
+            consolidated_bundle[tag] = TagMetadata(
+                category=cat_id,
+                count=count,
+                implied_by=implied_by_map.get(tag, []),
+                implies=implies_map.get(tag, []),
+                alias_to=alias_to,
             )
-            response.raise_for_status()
 
-        logger.info(
-            "Downloaded implications export. Decompressing and parsing CSV..."
-        )
-        decompressed = gzip.decompress(response.content)
-        csv_reader = csv.DictReader(io.StringIO(decompressed.decode("utf-8")))
+        # ------------------------------------------------------------------
+        # 5. Write and Pre-compress Output File
+        # ------------------------------------------------------------------
+        logger.info("Encoding consolidated bundle to MessagePack...")
+        raw_bytes = msgspec.msgpack.encode(consolidated_bundle)
 
-        implications_graph: dict[str, dict[str, list[str]]] = {}
-
-        def ensure_tag_entry(tag_name: str) -> dict[str, list[str]]:
-            if tag_name not in implications_graph:
-                implications_graph[tag_name] = {"implies": [], "implied_by": []}
-            return implications_graph[tag_name]
-
-        processed_count = 0
-        for row in csv_reader:
-            status = row.get("status", "").lower()
-            if status and status != "active":
-                continue
-
-            antecedent = row.get("antecedent_name")
-            consequent = row.get("consequent_name")
-
-            if not antecedent or not consequent:
-                continue
-
-            ensure_tag_entry(antecedent)["implies"].append(consequent)
-            ensure_tag_entry(consequent)["implied_by"].append(antecedent)
-            processed_count += 1
-
-        # 1. Write raw static MessagePack asset atomically
-        raw_bytes = msgspec.msgpack.encode(implications_graph)
-        temp_msgpack_path = OUTPUT_IMPLICATIONS_MSGPACK.with_suffix(
+        temp_msgpack_path = OUTPUT_CONSOLIDATED_MSGPACK.with_suffix(
             ".msgpack.tmp"
         )
         temp_msgpack_path.write_bytes(raw_bytes)
-        temp_msgpack_path.replace(OUTPUT_IMPLICATIONS_MSGPACK)
-
-        # 2. Pre-compress .gz and .br variants
-        logger.info("Pre-compressing tag implications asset with Gzip and Brotli (q=11)...")
-        write_precompressed_assets(OUTPUT_IMPLICATIONS_MSGPACK, raw_bytes)
+        temp_msgpack_path.replace(OUTPUT_CONSOLIDATED_MSGPACK)
 
         logger.info(
-            f"Successfully processed {processed_count} active implications across "
-            f"{len(implications_graph)} unique tags -> {OUTPUT_IMPLICATIONS_MSGPACK}"
+            "Pre-compressing consolidated tags asset with Gzip and Brotli (q=11)..."
         )
+        write_precompressed_assets(OUTPUT_CONSOLIDATED_MSGPACK, raw_bytes)
+
+        logger.info(
+            f"Successfully synced {len(tag_names)} DB tags and created consolidated bundle for "
+            f"{len(consolidated_bundle)} active/aliased tags -> {OUTPUT_CONSOLIDATED_MSGPACK}"
+        )
+
     except Exception as e:
-        logger.error(f"Failed to sync tag implications: {e}", exc_info=True)
+        logger.error(f"Failed to sync tags bundle: {e}", exc_info=True)
 
 
 async def is_tags_table_empty() -> bool:
@@ -207,26 +280,21 @@ def seconds_until_next_pull() -> float:
 
 
 async def run_tags_worker() -> None:
-    tags_br = Path(f"{OUTPUT_TAGS_MSGPACK}.br")
-    implications_br = Path(f"{OUTPUT_IMPLICATIONS_MSGPACK}.br")
+    bundle_br = Path(f"{OUTPUT_CONSOLIDATED_MSGPACK}.br")
 
     if (
         await is_tags_table_empty()
-        or not OUTPUT_TAGS_MSGPACK.exists()
-        or not tags_br.exists()
+        or not OUTPUT_CONSOLIDATED_MSGPACK.exists()
+        or not bundle_br.exists()
     ):
-        logger.info("Tags missing in DB or on disk. Running startup tags sync...")
-        await sync_daily_tags_export()
-    else:
-        logger.info("Tags table and pre-compressed static files present.")
-
-    if not OUTPUT_IMPLICATIONS_MSGPACK.exists() or not implications_br.exists():
         logger.info(
-            "Tag implications missing on disk. Running startup implications sync..."
+            "Tags missing in DB or pre-compressed bundle missing on disk. Running startup sync..."
         )
-        await sync_daily_implications_export()
+        await sync_daily_tags_bundle()
     else:
-        logger.info("Tag implications pre-compressed static files present.")
+        logger.info(
+            "Tags DB table and pre-compressed static files are present."
+        )
 
     while True:
         sleep_seconds = seconds_until_next_pull()
@@ -234,8 +302,7 @@ async def run_tags_worker() -> None:
         logger.info(f"Sleeping for {hours:.2f} hours until 06:00 UTC...")
 
         await asyncio.sleep(sleep_seconds)
-        await sync_daily_tags_export()
-        await sync_daily_implications_export()
+        await sync_daily_tags_bundle()
 
 
 if __name__ == "__main__":

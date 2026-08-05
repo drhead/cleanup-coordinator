@@ -1,0 +1,109 @@
+<div x-data="ImageModalComponent()" 
+     x-show="isOpen" 
+     x-cloak
+     x-transition.opacity.duration.200ms
+     class="fixed inset-0 z-50 flex flex-col bg-black/90 select-none overflow-hidden"
+     @keydown.window.escape="close()">
+
+    <!-- Header Control Bar -->
+    <div class="flex items-center justify-between px-4 py-2.5 bg-gray-900/90 border-b border-gray-800 text-white z-10">
+        <div class="flex items-center gap-3">
+            <span class="font-mono text-sm font-semibold text-gray-200" x-text="title || 'Expanded View'"></span>
+            
+            <template x-if="titleB">
+                <span class="text-xs font-mono text-gray-400">vs <span class="text-gray-200 font-semibold" x-text="titleB"></span></span>
+            </template>
+
+            <!-- Active Indicator Badge for Blink Mode -->
+            <template x-if="mode === 'blink'">
+                <span class="text-xs font-mono font-bold px-2 py-0.5 rounded border border-amber-500/50 bg-amber-500/20 text-amber-300 flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                    <span x-text="`ACTIVE: ${blinkShowB ? (titleB || 'Post B') : (title || 'Post A')}`"></span>
+                </span>
+            </template>
+
+            <!-- Diff Mode Badge -->
+            <template x-if="mode === 'diff'">
+                <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded border border-purple-500/50 bg-purple-500/20 text-purple-300">
+                    Difference Blend
+                </span>
+            </template>
+
+            <span x-show="dimensions" class="text-xs font-mono text-gray-400 bg-gray-800 px-2 py-0.5 rounded" x-text="dimensions"></span>
+        </div>
+
+        <!-- Zoom Controls & Actions -->
+        <div class="flex items-center gap-3">
+            <div class="flex items-center gap-1.5 bg-gray-800/80 border border-gray-700/60 rounded px-2 py-1 text-xs">
+                <button @click="zoomOut()" class="p-1 hover:text-blue-400 font-bold transition" title="Zoom Out (-)">−</button>
+                
+                <input type="range" 
+                       :min="minZoom" 
+                       :max="maxZoom" 
+                       :step="zoomStep" 
+                       x-model.number="zoomLevel" 
+                       class="w-24 accent-blue-500 cursor-pointer">
+                
+                <button @click="zoomIn()" class="p-1 hover:text-blue-400 font-bold transition" title="Zoom In (+)">+</button>
+                
+                <span class="font-mono w-12 text-center text-gray-300" x-text="`${Math.round(zoomLevel * 100)}%`"></span>
+                
+                <button @click="resetZoom()" class="ml-1 text-[11px] px-1.5 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-gray-200 transition">
+                    Reset
+                </button>
+            </div>
+
+            <button @click="close()" 
+                    class="p-1.5 rounded-lg bg-gray-800 hover:bg-red-600/80 border border-gray-700 text-gray-300 hover:text-white transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Viewport -->
+    <div class="relative flex-1 w-full h-full flex items-center justify-center overflow-hidden cursor-crosshair"
+         @wheel="handleWheel($event)"
+         @mousedown="startDrag($event)"
+         @mousemove="onDrag($event)"
+         @mouseup="stopDrag()"
+         @mouseleave="stopDrag()">
+
+        <div class="relative max-h-[85vh] max-w-[90vw] flex items-center justify-center pointer-events-auto select-none"
+             :style="transformStyle">
+
+            <!-- SINGLE MODE -->
+            <template x-if="mode === 'single'">
+                <img :src="src" class="max-h-[85vh] max-w-[90vw] object-contain block pointer-events-none">
+            </template>
+
+            <!-- DIFF MODE (CSS Mix-Blend) -->
+            <template x-if="mode === 'diff'">
+                <div class="relative max-h-[85vh] max-w-[90vw] flex items-center justify-center bg-black">
+                    <img :src="src" class="max-h-[85vh] max-w-[90vw] object-contain block pointer-events-none">
+                    <img :src="srcB" class="absolute inset-0 w-full h-full object-contain block pointer-events-none" style="mix-blend-mode: difference;">
+                </div>
+            </template>
+
+            <!-- BLINK MODE -->
+            <template x-if="mode === 'blink'">
+                <img :src="blinkShowB ? srcB : src" class="max-h-[85vh] max-w-[90vw] object-contain block pointer-events-none">
+            </template>
+
+            <!-- SWIPE MODE IN MODAL -->
+            <template x-if="mode === 'swipe'">
+                <div class="relative max-h-[85vh] max-w-[90vw] flex items-center justify-center cursor-ew-resize overflow-hidden"
+                     @mousemove="handleModalSwipeMove($event, $el)">
+                    <img :src="src" class="max-h-[85vh] max-w-[90vw] object-contain block pointer-events-none">
+                    <img :src="srcB" 
+                         class="absolute inset-0 w-full h-full object-contain block pointer-events-none"
+                         :style="`clip-path: inset(0 ${100 - swipePos}% 0 0);`">
+                    <div class="absolute top-0 bottom-0 w-0.5 bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)] pointer-events-none"
+                         :style="`left: ${swipePos}%;`"></div>
+                </div>
+            </template>
+
+        </div>
+    </div>
+</div>

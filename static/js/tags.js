@@ -22,16 +22,28 @@ const CATEGORY_MAP = {
  * @property {string[]} [implied_by]
  * @property {TagCategory} category
  * @property {number} tag_count
+ * @property {string} [alias_to]
  */
 
 /**
  * @typedef {Record<string, TagInfo>} TagInfoMap
  */
 
+/**
+ * @typedef {Object} RawTagBundleEntry
+ * @property {number} category
+ * @property {number} count
+ * @property {string[]} [implies]
+ * @property {string[]} [implied_by]
+ * @property {string|null} [alias_to]
+ */
+
 export class TagManager {
     constructor() {
         /** @type {TagInfoMap} */
         this.tagInfoMap = {};
+        /** @type {string[]} Binary-search indexed array of sorted tag names & aliases */
+        this.searchKeys = [];
         this.isLoaded = false;
 
         // --- Loading Screen Hooks ---
@@ -42,71 +54,65 @@ export class TagManager {
     }
 
     /**
-     * Ensures an entry exists for a given tag in tagInfoMap.
-     * @private
-     * @param {string} tag
-     * @returns {TagInfo}
-     */
-    _ensureTagInfo(tag) {
-        if (!this.tagInfoMap[tag]) {
-            this.tagInfoMap[tag] = {
-                category: 'GENERAL',
-                tag_count: 0
-            };
-        }
-        return this.tagInfoMap[tag];
-    }
-
-    /**
-     * Initializes and loads all MessagePack data files into a single unified map.
-     * Includes state updates for loading screens/progress bars.
+     * Initializes and loads the consolidated MessagePack data file into tagInfoMap
+     * and builds the prefix search index.
      */
     async init() {
         if (this.isLoading || this.isLoaded) return;
 
         this.isLoading = true;
         this.error = null;
-        this.loadingProgress = 5;
-        this.loadingStatus = 'Fetching tag database...';
+        this.loadingProgress = 10;
+        this.loadingStatus = 'Fetching unified tag database...';
 
         try {
-            // Fetch both files simultaneously
-            const [implRes, tagsRes] = await Promise.all([
-                fetch('/static/data/tag_implications.msgpack', {
-                    headers: { 'Accept': 'application/msgpack' }
-                }).catch(() => null),
-                fetch('/static/data/tags.msgpack', {
-                    headers: { 'Accept': 'application/msgpack' }
-                }).catch(() => null)
-            ]);
+            const response = await fetch('/static/data/tags_bundle.msgpack', {
+                headers: { 'Accept': 'application/msgpack' }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
 
             this.loadingProgress = 50;
-            this.loadingStatus = 'Decoding tag implications...';
+            this.loadingStatus = 'Decoding tag database...';
 
-            if (implRes && implRes.ok) {
-                const implBuffer = await implRes.arrayBuffer();
-                const rawImpl = /** @type {Record<string, { implies?: string[], implied_by?: string[] }>} */ (decode(implBuffer)) || {};
+            const buffer = await response.arrayBuffer();
+            const rawBundle = /** @type {Record<string, RawTagBundleEntry>} */ (decode(buffer)) || {};
 
-                for (const [tag, data] of Object.entries(rawImpl)) {
-                    const info = this._ensureTagInfo(tag);
-                    if (data.implies) info.implies = data.implies;
-                    if (data.implied_by) info.implied_by = data.implied_by;
+            this.loadingProgress = 75;
+            this.loadingStatus = 'Processing tag graph...';
+
+            /** @type {TagInfoMap} */
+            const parsedMap = {};
+
+            for (const [tag, entry] of Object.entries(rawBundle)) {
+                /** @type {TagInfo} */
+                const info = {
+                    category: CATEGORY_MAP[entry.category] || 'GENERAL',
+                    tag_count: entry.count ?? 0
+                };
+
+                if (entry.implies && entry.implies.length > 0) {
+                    info.implies = entry.implies;
                 }
+                if (entry.implied_by && entry.implied_by.length > 0) {
+                    info.implied_by = entry.implied_by;
+                }
+                if (entry.alias_to) {
+                    info.alias_to = entry.alias_to;
+                }
+
+                parsedMap[tag] = info;
             }
 
-            this.loadingProgress = 80;
-            this.loadingStatus = 'Decoding tag catalog...';
+            this.tagInfoMap = parsedMap;
 
-            if (tagsRes && tagsRes.ok) {
-                const tagsBuffer = await tagsRes.arrayBuffer();
-                const rawTags = /** @type {Record<string, [number, number]>} */ (decode(tagsBuffer)) || {};
+            this.loadingProgress = 90;
+            this.loadingStatus = 'Building search index...';
 
-                for (const [tag, [catId, count]] of Object.entries(rawTags)) {
-                    const info = this._ensureTagInfo(tag);
-                    info.category = CATEGORY_MAP[catId] || 'GENERAL';
-                    info.tag_count = count ?? 0;
-                }
-            }
+            // Build sorted key array for fast binary-search prefix matching
+            this.searchKeys = Object.keys(parsedMap).sort();
 
             this.loadingProgress = 100;
             this.loadingStatus = 'Tag data ready';
@@ -119,6 +125,101 @@ export class TagManager {
         } finally {
             this.isLoading = false;
         }
+    }
+
+    /**
+     * Resolves an alias string to its canonical target tag name.
+     * @param {string} tag
+     * @returns {string}
+     */
+    resolveAlias(tag) {
+        let current = tag;
+        let depth = 0;
+        while (depth < 5) {
+            const info = this.tagInfoMap[current];
+            if (info && info.alias_to) {
+                current = info.alias_to;
+                depth++;
+            } else {
+                break;
+            }
+        }
+        return current;
+    }
+
+    /**
+     * Searches tags matching a prefix query and returns top K results ordered by count descending.
+     * @param {string} query - Search prefix term.
+     * @param {number} [limit=10] - Number of top results to return (K).
+     * @returns {TagSearchResult[]}
+     */
+    searchTags(query, limit = 10) {
+        if (!query || typeof query !== 'string') return [];
+
+        const normalizedQuery = query.trim().toLowerCase().replace(/\s+/g, '_');
+        if (!normalizedQuery || this.searchKeys.length === 0) return [];
+
+        const keys = this.searchKeys;
+
+        // Binary search to find the first key >= normalizedQuery
+        let low = 0;
+        let high = keys.length - 1;
+        let startIdx = keys.length;
+
+        while (low <= high) {
+            const mid = (low + high) >> 1;
+            if (keys[mid] >= normalizedQuery) {
+                startIdx = mid;
+                high = mid - 1;
+            } else {
+                low = mid + 1;
+            }
+        }
+
+        /** @type {Map<string, TagSearchResult>} */
+        const candidateMap = new Map();
+
+        // Scan contiguous range of keys matching the prefix
+        for (let i = startIdx; i < keys.length; i++) {
+            const key = keys[i];
+            if (!key.startsWith(normalizedQuery)) {
+                break;
+            }
+
+            const targetTag = this.resolveAlias(key);
+            const targetInfo = this.tagInfoMap[targetTag];
+            const isAliased = key !== targetTag;
+
+            const category = targetInfo ? targetInfo.category : 'GENERAL';
+            const count = targetInfo ? targetInfo.tag_count : 0;
+
+            /** @type {TagSearchResult} */
+            const candidate = {
+                name: targetTag,
+                category,
+                count
+            };
+
+            if (isAliased) {
+                candidate.aliasedFrom = key;
+            }
+
+            // Deduplicate: If target was already matched via alias, prefer a direct match
+            if (candidateMap.has(targetTag)) {
+                const existing = candidateMap.get(targetTag);
+                if (existing && existing.aliasedFrom && !isAliased) {
+                    candidateMap.set(targetTag, candidate);
+                }
+            } else {
+                candidateMap.set(targetTag, candidate);
+            }
+        }
+
+        // Sort deduplicated candidates by count descending
+        const results = Array.from(candidateMap.values());
+        results.sort((a, b) => b.count - a.count);
+
+        return results.slice(0, limit);
     }
 
     /**
