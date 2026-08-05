@@ -193,10 +193,10 @@
                                 <button @click="activeRating = r"
                                         class="text-xs px-2 py-0.5 rounded font-bold uppercase transition"
                                         :class="activeRating === r 
-                                            ? (r === 's' ? 'bg-green-500 text-green-950' : (r === 'q' ? 'bg-amber-500 text-amber-950' : 'bg-red-500 text-red-950')) 
+                                            ? ($store.tags.getRatingBadgeClass(r)) 
                                             : (activeRating === null && (lhsPost?.rating || lhsPost?.rating_letter) === r
-                                                ? (r === 's' ? 'text-green-500' : (r === 'q' ? 'text-amber-500' : 'text-red-500'))
-                                                : 'text-white hover:bg-gray-800')">
+                                                ? (r === 's' ? 'text-green-500 hover:bg-gray-800 border border-transparent' : (r === 'q' ? 'text-amber-500 hover:bg-gray-800 border border-transparent' : 'text-red-500 hover:bg-gray-800 border border-transparent'))
+                                                : 'text-white hover:bg-gray-800 border border-transparent')">
                                     <span x-text="r"></span>
                                 </button>
                             </template>
@@ -292,6 +292,7 @@
                                               } : {})
                                           }"
                                           :style="(hoveredImplicationData && hoveredImplicationData.postId === (post.id || post.post_id) && (hoveredImplicationData.tagName === tag.name || hoveredImplicationData.directImplied.has(tag.name) || hoveredImplicationData.indirectImplied.has(tag.name) || hoveredImplicationData.directImplicators.has(tag.name) || hoveredImplicationData.indirectImplicators.has(tag.name))) ? '' : $store.tags.getTagStyle(tag.category)"
+                                          :title="`${tag.name} (${($store.tags.tagInfoMap[tag.name]?.tag_count ?? 0).toLocaleString()} posts)`"
                                           @click="if(!isTagOnLhs(tag.name)) addTagWithImplications(tag.name)"
                                           @mouseenter="hoveredImplicationData = getImplicationChain(post.id || post.post_id, tag.name, post)"
                                           @mouseleave="hoveredImplicationData = null">

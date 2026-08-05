@@ -139,6 +139,7 @@
                         } : {})
                     }"
                     :style="$store.tags.getTagStyle(tag.category)"
+                    :title="`${tag.name} (${($store.tags.tagInfoMap[tag.name]?.tag_count ?? 0).toLocaleString()} posts)`"
                     @mouseenter="hoveredImplicationData = $store.tags.getImplicationChain(post.post_id, tag.name, post.tags)"
                     @mouseleave="hoveredImplicationData = null">
                     <span x-text="tag.name"></span>
