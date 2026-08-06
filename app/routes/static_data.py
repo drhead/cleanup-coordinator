@@ -22,7 +22,7 @@ def get_file_stat_key(path: Path) -> tuple[str, float, int]:
     return (str(path.resolve()), stat.st_mtime, stat.st_size)
 
 
-@lru_cache(maxsize=5)
+@lru_cache(maxsize=1)
 def _read_raw_cached(path_str: str, mtime: float, size: int) -> bytes:
     return Path(path_str).read_bytes()
 
@@ -32,7 +32,7 @@ def get_raw_bytes(path: Path) -> bytes:
     return _read_raw_cached(*key)
 
 
-@lru_cache(maxsize=5)
+@lru_cache(maxsize=1)
 def _read_gz_cached(path_str: str, mtime: float, size: int) -> bytes:
     gz_path = Path(f"{path_str}.gz")
     if gz_path.is_file():
@@ -46,7 +46,7 @@ def get_gz_bytes(path: Path) -> bytes:
     return _read_gz_cached(*key)
 
 
-@lru_cache(maxsize=5)
+@lru_cache(maxsize=1)
 def _read_br_cached(path_str: str, mtime: float, size: int) -> bytes:
     br_path = Path(f"{path_str}.br")
     if br_path.is_file():
@@ -148,17 +148,6 @@ async def serve_static_msgpack(filename: str, request: Request) -> Response:
         response.headers["Content-Encoding"] = content_encoding
 
     return response
-
-
-@router.get("/static/data/tag_implications.msgpack")
-async def get_tag_implications(request: Request) -> Response:
-    return await serve_static_msgpack("tag_implications.msgpack", request)
-
-
-@router.get("/static/data/tags.msgpack")
-async def get_tags(request: Request) -> Response:
-    return await serve_static_msgpack("tags.msgpack", request)
-
 
 @router.get("/static/data/tags_bundle.msgpack")
 async def get_tags_bundle(request: Request) -> Response:
