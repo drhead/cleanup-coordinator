@@ -43,7 +43,7 @@
 
     <!-- Cluster Workflow Container -->
     <template x-if="!cluster.collapsed">
-        <div class="my-3 space-y-3">
+        <div x-data="resolutionManager(cluster)" x-ref="resMgr" class="my-3 space-y-3">
 
             <!-- Initial Action Triggers -->
             <template x-if="$store.auth?.e621User && activeView === 'none'">
@@ -53,35 +53,15 @@
                         <span>🔍</span>
                         <span>Start Comparison</span>
                     </button>
-
-                    <button @click="activeView = 'reconcile'"
-                            class="bg-purple-600 hover:bg-purple-500 text-white text-xs px-4 py-2 rounded font-semibold transition flex items-center gap-2 shadow-md">
-                        <span>🏷️</span>
-                        <span>Direct Tag Reconciliation</span>
-                    </button>
                 </div>
             </template>
 
             <!-- Screen 1: Comparison View Scope -->
             <template x-if="activeView === 'compare'">
-                <div x-data="ComparisonManager(cluster)" x-init="startComparison()">
+                <div x-data="ComparisonManager($data)" x-init="startComparison()">
                     <template x-if="isActive">
                         <div class="space-y-3">
                             <load src="/templates/components/cluster-comparison.html" />
-
-                            <!-- Hand-off Bar -->
-                            <div class="flex items-center justify-between bg-gray-950 border border-gray-800 rounded-lg p-3">
-                                <button @click="closeComparison(); activeView = 'none'"
-                                        class="text-xs text-gray-400 hover:text-white px-3 py-1.5 rounded border border-gray-800 hover:bg-gray-800 transition">
-                                    Exit
-                                </button>
-
-                                <button @click="proceedToReconciliation($data)"
-                                        class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded font-bold transition flex items-center gap-2 shadow-md">
-                                    <span>Proceed to Tag Reconciliation</span>
-                                    <span>→</span>
-                                </button>
-                            </div>
                         </div>
                     </template>
                 </div>
@@ -89,20 +69,19 @@
 
             <!-- Screen 2: Tag Reconciliation View Scope -->
             <template x-if="activeView === 'reconcile'">
-                <div x-data="ReconciliationManager(cluster)" x-init="startReconciliation($data)">
+                <div x-data="ReconciliationManager($data)" x-init="startReconciliation()">
                     <template x-if="isActive">
                         <div class="space-y-3">
                             <load src="/templates/components/cluster-reconciliation.html" />
-
-                            <div class="flex items-center justify-between border-t border-gray-800 pt-3">
-                                <button @click="closeReconciliation(); activeView = 'compare'"
-                                        class="text-xs text-gray-400 hover:text-white px-3 py-1.5 rounded border border-gray-800 hover:bg-gray-800 flex items-center gap-1 transition">
-                                    <span>←</span>
-                                    <span>Back to Comparison</span>
-                                </button>
-                            </div>
                         </div>
                     </template>
+                </div>
+            </template>
+
+            <!-- Screen 3: Summary View Scope -->
+            <template x-if="activeView === 'summary'">
+                <div class="space-y-3">
+                    <load src="/templates/components/cluster-summary.html" />
                 </div>
             </template>
 
@@ -110,7 +89,7 @@
     </template>
 
     <!-- Posts Grid inside Cluster -->
-    <template x-if="!cluster.collapsed">
+    <template x-if="!cluster.collapsed && activeView === 'none'">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
             <template x-for="post in cluster.posts" :key="post.post_id">
                 <load src="/templates/components/post-card.html" />

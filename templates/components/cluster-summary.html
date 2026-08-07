@@ -1,0 +1,214 @@
+<div x-data="summaryManager($data)" class="space-y-6 text-sm">
+    
+    <!-- Iterates through each ResolutionGraph in resolutionManager -->
+    <template x-for="(graph, graphIdx) in resMgr.graphs" :key="graphIdx">
+        <div class="border border-gray-800 rounded-lg bg-gray-900/80 p-4 space-y-3 shadow-lg">
+            
+            <!-- Graph Header Info -->
+            <div class="flex items-center justify-between border-b border-gray-800 pb-2">
+                <div class="flex items-center gap-2">
+                    <span class="font-mono text-xs uppercase font-bold text-gray-400" x-text="`Graph #${graphIdx + 1}`"></span>
+                    <span class="text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider"
+                          :class="{
+                              'bg-blue-950 text-blue-400 border border-blue-800/60': graph.type === 'duplicate',
+                              'bg-emerald-950 text-emerald-400 border border-emerald-800/60': graph.type === 'variant',
+                              'bg-gray-800 text-gray-400 border border-gray-700': graph.type === 'unrelated',
+                              'bg-amber-950 text-amber-400 border border-amber-800/60': graph.type === 'unknown'
+                          }"
+                          x-text="graph.type"></span>
+                </div>
+                <span class="text-xs text-gray-500" x-text="`${graph.posts.size} post(s)`"></span>
+            </div>
+
+            <!-- Table-like Container for Graph Rows -->
+            <div class="border border-gray-800 rounded-lg overflow-hidden divide-y divide-gray-800">
+                <template x-for="postId in Array.from(graph.posts)" :key="postId">
+                    <div x-data="{ post: resMgr.getPost(postId) }">
+                        <template x-if="post">
+                            <div class="p-4 transition flex flex-col md:flex-row gap-4 items-start justify-between"
+                                 :class="{
+                                     /* Duplicate Theme */
+                                     'bg-blue-950/20': graph.type === 'duplicate' && isCanonical(graphIdx, postId),
+                                     'bg-amber-950/20': graph.type === 'duplicate' && !isCanonical(graphIdx, postId),
+                                     
+                                     /* Variant Theme */
+                                     'bg-emerald-950/20': graph.type === 'variant' && isCanonical(graphIdx, postId),
+                                     'bg-yellow-950/20': graph.type === 'variant' && !isCanonical(graphIdx, postId),
+
+                                     /* Unrelated / Unknown Theme */
+                                     'bg-gray-950/40': graph.type === 'unrelated' || graph.type === 'unknown'
+                                 }">
+                                
+                                <!-- Left Section: Single Unified Thumbnail Block -->
+                                <div class="w-full md:w-36 flex-shrink-0 border border-gray-800 rounded-lg overflow-hidden bg-gray-950 flex flex-col">
+                                    
+                                    <!-- 1. Header Bar (ID & Rating with Diff) -->
+                                    <div class="bg-gray-900 px-2 py-1 flex items-center justify-between text-xs border-b border-gray-800">
+                                        <a :href="`https://e621.net/posts/${postId}`" target="_blank" 
+                                           class="font-mono font-bold text-blue-400 hover:underline" 
+                                           x-text="`#${postId}`"></a>
+
+                                        <!-- Rating (Single letter, formatted via tags) -->
+                                        <div class="flex items-center gap-1 font-mono text-[10px]">
+                                            <!-- Unchanged Rating -->
+                                            <template x-if="post.rating === post.original?.rating">
+                                                <span class="px-1.5 py-0.5 rounded font-bold uppercase text-gray-400 bg-gray-800"
+                                                      x-text="`${$store.tags?.getRatingLabel(post.rating)}`">
+                                                </span>
+                                            </template>
+
+                                            <!-- Changed Rating: {Original} -> {New} -->
+                                            <template x-if="post.rating !== post.original?.rating">
+                                                <div class="flex items-center gap-0.5" :title="`Rating changed from ${post.original?.rating}`">
+                                                    <span class="text-gray-500 font-bold uppercase" 
+                                                          x-text="$store.tags?.getRatingLabel(post.original?.rating)"></span>
+                                                    <span class="text-gray-500">→</span>
+                                                    <span class="px-1 py-0.5 rounded font-bold uppercase"
+                                                          :class="$store.tags?.getRatingBadgeClass(post.rating)"
+                                                          x-text="$store.tags?.getRatingLabel(post.rating)"></span>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+
+                                    <!-- 2. Image Viewport (Compact max-height) -->
+                                    <div class="w-full h-40 bg-black flex items-center justify-center p-1 overflow-hidden">
+                                        <template x-if="post.original.fileUrl || post.original.file_url">
+                                            <img :src="post.original.fileUrl || post.original.file_url" 
+                                                 :alt="`Post #${postId}`" 
+                                                 class="max-h-full max-w-full object-contain" />
+                                        </template>
+                                        <template x-if="!post.original.fileUrl && !post.original.file_url">
+                                            <span class="text-gray-600 text-xs font-mono text-center">No Image</span>
+                                        </template>
+                                    </div>
+
+                                    <!-- 3. Image Info Placeholder Bar -->
+                                    <div class="bg-gray-900 border-t border-gray-800 px-2 py-1 text-[10px] text-gray-500 text-center font-mono">
+                                        <span>Image Info Placeholder</span>
+                                    </div>
+
+                                    <!-- 4. Status Badge (Non-interactive Pure Status Indicators) -->
+                                    <template x-if="graph.type === 'duplicate'">
+                                        <div>
+                                            <div x-show="isCanonical(graphIdx, postId)" 
+                                                 class="border-t border-gray-800 bg-blue-950/60 text-blue-300 font-bold text-[10px] py-1 text-center uppercase tracking-wider">
+                                                KEEP
+                                            </div>
+                                            <div x-show="!isCanonical(graphIdx, postId)" 
+                                                 class="border-t border-amber-900/60 bg-amber-950/60 text-amber-400 font-bold text-[10px] py-1 text-center uppercase tracking-wider">
+                                                FLAG DUPLICATE
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <template x-if="graph.type === 'variant'">
+                                        <div>
+                                            <div x-show="isCanonical(graphIdx, postId)" 
+                                                 class="border-t border-gray-800 bg-emerald-950/60 text-emerald-300 font-bold text-[10px] py-1 text-center uppercase tracking-wider">
+                                                PARENT
+                                            </div>
+                                            <div x-show="!isCanonical(graphIdx, postId)" 
+                                                 class="border-t border-yellow-900/60 bg-yellow-950/60 text-yellow-400 font-bold text-[10px] py-1 text-center uppercase tracking-wider">
+                                                CHILD
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                </div>
+
+                                <!-- Middle Section: Diff UI (Tags, Description, Sources) -->
+                                <div class="flex-1 w-full space-y-2.5 text-xs">
+                                    
+                                    <!-- 1. Keep / Parent / Edit Diff View -->
+                                    <template x-if="graph.type === 'unrelated' || isCanonical(graphIdx, postId) || graph.type === 'variant'">
+                                        <div class="space-y-2">
+                                            <!-- Categorized & Sorted Tag Edits (Including removed tags via concatenation) -->
+                                            <div>
+                                                <span class="text-gray-400 font-semibold block mb-1">Tags:</span>
+                                                <div class="flex flex-wrap gap-1">
+                                                    <template x-for="tag in $store.tags?.getSortedTags([...post.tags, ...getRemovedTags(post)], post)" :key="`${tag.category}:${tag.name}`">
+                                                        <span class="px-1.5 py-0.5 rounded text-[11px] transition-colors"
+                                                              :style="$store.tags?.getTagStyle(tag.category)"
+                                                              :class="{
+                                                                  /* Added Tag Highlight */
+                                                                  'bg-green-950/80 border border-green-700/60': getAddedTags(post).includes(tag.name),
+                                                                  /* Removed Tag Highlight */
+                                                                  'bg-red-950/60 line-through border border-red-900/60 opacity-70': getRemovedTags(post).includes(tag.name),
+                                                                  /* Unchanged Tag Background */
+                                                                  'bg-gray-800/90': !getAddedTags(post).includes(tag.name) && !getRemovedTags(post).includes(tag.name)
+                                                              }">
+                                                            <span x-text="getAddedTags(post).includes(tag.name) ? `+ ${tag.name}` : tag.name"></span>
+                                                        </span>
+                                                    </template>
+                                                </div>
+                                            </div>
+
+                                            <!-- Description Diff -->
+                                            <div>
+                                                <span class="text-gray-400 font-semibold block mb-1">Description:</span>
+                                                <div class="p-2 rounded border text-xs"
+                                                     :class="isDescriptionEdited(post) ? 'bg-amber-950/30 border-amber-800/60 text-amber-200' : 'bg-gray-950 border-gray-800 text-gray-500'">
+                                                    <p x-text="post.description || '(No description)'" class="line-clamp-3 whitespace-pre-wrap"></p>
+                                                </div>
+                                            </div>
+
+                                            <!-- Sources Diff -->
+                                            <div>
+                                                <span class="text-gray-400 font-semibold block mb-1">Sources:</span>
+                                                <ul class="space-y-0.5 font-mono text-[11px] break-all">
+                                                    <template x-for="src in post.sources" :key="src">
+                                                        <li class="flex items-center gap-1.5"
+                                                            :class="post.original.sources?.includes(src) ? 'text-gray-500' : 'text-green-400 font-medium'">
+                                                            <span x-text="post.original.sources?.includes(src) ? '•' : '+'"></span>
+                                                            <span x-text="src"></span>
+                                                        </li>
+                                                    </template>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <!-- 2. Flag Input View (Duplicate Non-Canonical Posts) -->
+                                    <template x-if="graph.type === 'duplicate' && !isCanonical(graphIdx, postId)">
+                                        <div class="space-y-2">
+                                            <label class="text-xs text-amber-300 font-semibold block">Flag Note:</label>
+                                            <textarea x-model="post.flag_note" 
+                                                      placeholder="Reason for flagging duplicate..."
+                                                      rows="4"
+                                                      class="w-full bg-gray-950 border border-amber-900/60 rounded p-2 text-xs text-gray-200 focus:outline-none focus:border-amber-500"></textarea>
+                                        </div>
+                                    </template>
+                                </div>
+
+                                <!-- Right Section: Action Controls -->
+                                <div class="w-full md:w-auto flex md:flex-col justify-end gap-2 pt-2 md:pt-0 border-t md:border-t-0 border-gray-800">
+                                    <!-- Apply Button -->
+                                    <template x-if="graph.type === 'unrelated' || isCanonical(graphIdx, postId) || graph.type === 'variant'">
+                                        <button @click="applyChanges(postId)" 
+                                                class="w-full md:w-28 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs px-3 py-2 rounded shadow transition flex items-center justify-center gap-1">
+                                            <span>✓</span>
+                                            <span>Apply</span>
+                                        </button>
+                                    </template>
+
+                                    <!-- Flag Button -->
+                                    <template x-if="graph.type === 'duplicate' && !isCanonical(graphIdx, postId)">
+                                        <button @click="submitFlag(postId)" 
+                                                class="w-full md:w-28 bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs px-3 py-2 rounded shadow transition flex items-center justify-center gap-1">
+                                            <span>🚩</span>
+                                            <span>Flag</span>
+                                        </button>
+                                    </template>
+                                </div>
+
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+
+        </div>
+    </template>
+
+</div>

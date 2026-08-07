@@ -59,7 +59,7 @@ export class TagManager {
         this.error = null;
     }
 
-/**
+    /**
      * Helper to update progress state and report to caller.
      * @param {string} status 
      * @param {number} percent 

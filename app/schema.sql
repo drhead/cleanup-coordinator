@@ -1,4 +1,5 @@
 CREATE EXTENSION IF NOT EXISTS pg_ivm;
+ALTER DATABASE coordinator_db SET TimeZone TO 'UTC';
 
 -- =========================================================================
 -- TABLES
@@ -16,8 +17,7 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS batches (
     batch_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     project_id TEXT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
-    batch_number INTEGER NOT NULL,
-    status TEXT NOT NULL DEFAULT 'AVAILABLE'
+    batch_number INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS clusters (
@@ -120,6 +120,27 @@ FROM immv_post_flag_counts fc;
 -- COMPUTED METRICS VIEW
 -- Evaluates discrepancy flags and resolution criteria per cluster
 -- =========================================================================
+
+-- Standard view computing batch status dynamically
+CREATE OR REPLACE VIEW v_batches AS
+SELECT 
+    b.batch_id,
+    b.project_id,
+    b.batch_number,
+    CASE 
+        -- Priority 1: All clusters are resolved
+        WHEN bool_and(c.is_resolved) = TRUE THEN 'COMPLETE'
+        
+        -- Priority 2: Active lease exists
+        WHEN l.batch_id IS NOT NULL AND l.expires_at > CURRENT_TIMESTAMP THEN 'CLAIMED'
+        
+        -- Priority 3: Fallback
+        ELSE 'AVAILABLE'
+    END AS status
+FROM batches b
+LEFT JOIN clusters c ON b.batch_id = c.batch_id
+LEFT JOIN leases l ON b.batch_id = l.batch_id
+GROUP BY b.batch_id, b.project_id, b.batch_number, l.batch_id, l.expires_at;
 
 CREATE OR REPLACE VIEW v_cluster_evaluations AS
 WITH active_posts AS (

@@ -47,7 +47,7 @@ export function ensureClusterPostsInfo(clusterPosts) {
     }
 
     // 3. Fetch missing details from e621
-    return fetch(`https://e621.net/posts.json?tags=id:${idsQuery}`, { headers })
+    return fetch(`https://e621.net/posts.json?tags=id:${idsQuery} status:any`, { headers })
         .then(res => {
             if (!res.ok) {
                 throw new Error(`e621 API returned HTTP ${res.status}`);

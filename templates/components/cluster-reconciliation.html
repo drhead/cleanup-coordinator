@@ -1,87 +1,72 @@
 <div class="bg-gray-950 border border-gray-800 rounded-lg p-4 space-y-5 text-gray-200">
 
-    <!-- 1. TOP ROW: Graph Selection Buttons -->
+    <!-- 1. TOP ROW: Duplicate Graph Selection Buttons -->
     <div class="flex items-center gap-2 overflow-x-auto pb-2 border-b border-gray-800">
-        <span class="text-xs font-bold text-gray-400 uppercase tracking-wider mr-2">Graphs:</span>
-        <template x-for="(graph, idx) in graphs" :key="graph.id">
+        <span class="text-xs font-bold text-gray-400 uppercase tracking-wider mr-2">Duplicate Graphs:</span>
+        <template x-for="(graph, idx) in duplicateGraphs" :key="idx">
             <button @click="selectGraph(idx)"
-                    class="text-xs px-3 py-1.5 rounded font-mono font-semibold transition border flex items-center gap-2"
-                    :class="{
-                        'ring-2 ring-blue-500 shadow-lg': activeGraphIndex === idx,
-                        'bg-amber-950/50 text-amber-300 border-amber-800/80 hover:bg-amber-900/60': graph.type === 'duplicate',
-                        'bg-purple-950/50 text-purple-300 border-purple-800/80 hover:bg-purple-900/60': graph.type === 'variant',
-                        'bg-gray-900 text-gray-400 border-gray-800 hover:text-white': graph.type === 'unrelated'
-                    }">
-                <span class="w-2 h-2 rounded-full"
-                      :class="{
-                          'bg-amber-400': graph.type === 'duplicate',
-                          'bg-purple-400': graph.type === 'variant',
-                          'bg-gray-500': graph.type === 'unrelated'
-                      }"></span>
-                <span x-text="`Graph #${graph.id} (${graph.type})`"></span>
+                    class="text-xs px-3 py-1.5 rounded font-mono font-semibold transition border flex items-center gap-2 bg-amber-950/50 text-amber-300 border-amber-800/80 hover:bg-amber-900/60"
+                    :class="{ 'ring-2 ring-blue-500 shadow-lg': activeGraphIndex === idx }">
+                <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                <span x-text="`Graph #${idx + 1}`"></span>
             </button>
         </template>
     </div>
 
     <!-- 2. STRIPPED-DOWN IMAGES ROW -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 relative items-center">
-        <template x-for="(pId, pIdx) in orderedPostIds" :key="pId">
-            <div class="space-y-2 relative flex flex-col justify-between transition">
-                
-                <!-- ID Badge Header with Hover Menu -->
-                <div class="flex items-center justify-between relative group"
-                     x-data="{ hovered: false }" 
-                     @mouseenter="hovered = true" 
-                     @mouseleave="hovered = false">
+    <template x-if="currentGraph">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 relative items-center">
+            <template x-for="pId in orderedPostIds" :key="pId">
+                <div class="space-y-2 relative flex flex-col justify-between transition">
                     
-                    <button @click="selectSuperior(pId)"
-                            class="text-xs font-mono font-bold px-2.5 py-1 rounded transition flex items-center gap-1.5"
-                            :class="selectedSuperiorId === pId ? 'bg-blue-600 text-white shadow' : 'bg-gray-800/80 text-gray-300 hover:bg-gray-700'">
-                        <span x-text="`Post #${pId}`"></span>
-                        <span x-show="selectedSuperiorId === pId" class="text-[9px] uppercase font-black bg-blue-800 px-1 py-0.5 rounded text-blue-200">Kept</span>
-                    </button>
-
-                    <div class="flex items-center gap-2 transition-opacity duration-150"
-                         :class="hovered || selectedSuperiorId === pId ? 'opacity-100' : 'opacity-0 pointer-events-none'">
-                        <button x-show="selectedSuperiorId !== pId"
-                                @click="selectSuperior(pId)"
-                                class="text-[11px] font-semibold text-blue-400 hover:text-blue-300 hover:underline">
-                            Select to Keep
+                    <!-- ID Badge Header with Hover Menu -->
+                    <div class="flex items-center justify-between relative group"
+                         x-data="{ hovered: false }" 
+                         @mouseenter="hovered = true" 
+                         @mouseleave="hovered = false">
+                        
+                        <button @click="selectSuperior(pId)"
+                                class="text-xs font-mono font-bold px-2.5 py-1 rounded transition flex items-center gap-1.5"
+                                :class="selectedSuperiorId === pId ? 'bg-blue-600 text-white shadow' : 'bg-gray-800/80 text-gray-300 hover:bg-gray-700'">
+                            <span x-text="`Post #${pId}`"></span>
+                            <span x-show="selectedSuperiorId === pId" class="text-[9px] uppercase font-black bg-blue-800 px-1 py-0.5 rounded text-blue-200">Kept</span>
                         </button>
-                        <a :href="`https://e621.net/posts/${pId}`" target="_blank" rel="noopener noreferrer"
-                           class="text-[11px] font-semibold text-gray-400 hover:text-gray-200 hover:underline flex items-center gap-0.5">
-                            <span>e621</span>
-                            <span class="text-[9px]">&nearr;</span>
-                        </a>
+
+                        <div class="flex items-center gap-2 transition-opacity duration-150"
+                             :class="hovered || selectedSuperiorId === pId ? 'opacity-100' : 'opacity-0 pointer-events-none'">
+                            <button x-show="selectedSuperiorId !== pId"
+                                    @click="selectSuperior(pId)"
+                                    class="text-[11px] font-semibold text-blue-400 hover:text-blue-300 hover:underline">
+                                Select to Keep
+                            </button>
+                            <a :href="`https://e621.net/posts/${pId}`" target="_blank" rel="noopener noreferrer"
+                               class="text-[11px] font-semibold text-gray-400 hover:text-gray-200 hover:underline flex items-center gap-0.5">
+                                <span>e621</span>
+                                <span class="text-[9px]">&nearr;</span>
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Borderless Clean Image Frame -->
+                    <div class="w-full h-72 bg-black/40 rounded flex items-center justify-center overflow-hidden">
+                        <img :src="getLocalClusterPost(pId)?.fileUrl" class="max-h-full max-w-full object-contain rounded">
                     </div>
                 </div>
-
-                <!-- Borderless Clean Image Frame -->
-                <div class="w-full h-72 bg-black/40 rounded flex items-center justify-center overflow-hidden">
-                    <img :src="getLocalClusterPost(pId).fileUrl" class="max-h-full max-w-full object-contain rounded">
-                </div>
-            </div>
-        </template>
-
-        <!-- Dynamic Directional Arrow -->
-        <template x-if="currentGraph.postIds.length === 2 && selectedSuperiorId">
-            <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none bg-blue-600 text-white border-2 border-blue-300 w-10 h-10 rounded-full shadow-lg shadow-blue-500/50 font-black text-xl flex items-center justify-center">
-                <span>←</span>
-            </div>
-        </template>
-    </div>
+            </template>
+        </div>
+    </template>
 
     <!-- 3. UNSELECTED PROMPT STATE -->
     <template x-if="!lhsPost">
         <div class="bg-gray-900/40 border border-dashed border-gray-800 rounded-lg p-8 text-center space-y-2">
             <div class="text-blue-400 text-sm font-bold uppercase tracking-wider">No Post Selected</div>
             <p class="text-xs text-gray-400 max-w-sm mx-auto">
-                Click the ID badge on the image you wish to keep. It will move to the left side and receive merged tags.
+                Click the ID badge on the image you wish to keep. All other posts in this duplicate graph will be flagged, and you can transfer tags to the kept post.
             </p>
         </div>
     </template>
 
-    <!-- 4. TAG CARDS (Adapted from post-card.html) -->
+    <!-- 4. TAG CARDS (Retagging Interface) -->
     <template x-if="lhsPost">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             
@@ -90,7 +75,6 @@
                 <div class="space-y-3">
                     <!-- Post Header Line -->
                     <div class="flex items-center justify-between">
-                        <!-- Left Details: Dynamic Rating Badge, Post ID & Parent ID -->
                         <div class="flex items-center space-x-2">
                             <span class="px-1.5 py-0.5 rounded text-[11px] font-bold font-mono transition-colors"
                                   :class="$store.tags.getRatingBadgeClass(getEffectiveLhsRating())"
@@ -110,7 +94,6 @@
                             </template>
                         </div>
 
-                        <!-- Right Details: Dimensions & Flags -->
                         <div class="flex items-center space-x-2">
                             <template x-if="(lhsPost.file?.width || lhsPost.image_width) && (lhsPost.file?.height || lhsPost.image_height)">
                                 <span class="font-mono text-[11px] text-gray-400"
@@ -127,7 +110,7 @@
                         </div>
                     </div>
 
-                    <!-- Post Pools List (if present) -->
+                    <!-- Post Pools List -->
                     <template x-if="lhsPost.pool_ids && lhsPost.pool_ids.length > 0">
                         <div class="flex flex-wrap items-center gap-1.5 pt-1">
                             <span class="text-gray-500 font-semibold text-[10px] uppercase tracking-wider">Pools:</span>
@@ -211,7 +194,6 @@
                         @add-tag="addCustomTag()"
                         @click.outside="isOpen = false">
                         
-                        <!-- Input & Add Button -->
                         <div class="flex items-center gap-1.5 w-full">
                             <input type="text" 
                                 x-model="tagInput" 
@@ -230,7 +212,6 @@
                             </button>
                         </div>
 
-                        <!-- Drop-up Results Menu -->
                         <div x-show="isOpen && results.length > 0"
                             x-transition
                             class="absolute bottom-full mb-1 left-0 right-0 min-w-[340px] z-50 bg-gray-950 border border-gray-800 rounded shadow-2xl max-h-72 overflow-y-auto divide-y divide-gray-900"
@@ -270,7 +251,7 @@
                 </div>
             </div>
 
-            <!-- RHS: Comparison Posts Card List -->
+            <!-- RHS: Single Active Comparison Post Card -->
             <div class="space-y-4">
                 <template x-for="post in rhsPosts" :key="post.post_id">
                     <div class="bg-gray-950 border border-gray-800/80 rounded-md p-3.5 text-xs space-y-3">
@@ -314,7 +295,7 @@
                             </div>
                         </div>
 
-                        <!-- Post Pools List (if present) -->
+                        <!-- Post Pools List -->
                         <template x-if="post.pool_ids && post.pool_ids.length > 0">
                             <div class="flex flex-wrap items-center gap-1.5 pt-1">
                                 <span class="text-gray-500 font-semibold text-[10px] uppercase tracking-wider">Pools:</span>
@@ -366,18 +347,13 @@
 
     <!-- 5. BOTTOM NAVIGATION -->
     <div class="flex items-center justify-between border-t border-gray-800 pt-4">
-        <div class="flex items-center gap-4">
-            <button @click="closeReconciliation()"
-                    class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs px-3.5 py-1.5 rounded font-semibold transition border border-gray-700 flex items-center gap-1.5">
-                <span>←</span>
-                <span>Back to Comparison</span>
-            </button>
-            <span class="text-xs text-gray-500" x-text="`Reconciling Graph ${activeGraphIndex + 1} of ${graphs.length}`"></span>
+        <div class="text-xs text-gray-400 font-mono" x-show="selectedSuperiorId && rhsPostIds.length > 0">
+            Post <span x-text="activeRhsIndex + 1"></span> of <span x-text="rhsPostIds.length"></span> in Graph <span x-text="activeGraphIndex + 1"></span>
         </div>
-
-        <button @click="nextGraph()"
-                class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-5 py-2 rounded font-bold transition shadow-md flex items-center gap-2">
-            <span>Next Graph</span>
+        <button @click="advance($data)"
+                :disabled="!selectedSuperiorId"
+                class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs px-5 py-2 rounded font-bold transition shadow-md flex items-center gap-2">
+            <span x-text="nextButtonLabel"></span>
             <span>→</span>
         </button>
     </div>

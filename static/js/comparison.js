@@ -1,6 +1,5 @@
 // @ts-check
 
-import { ensureClusterPostsInfo } from './e621_api.js';
 import { showToast } from './toasts.js';
 import { openImageModal } from './image_modal.js';
 
@@ -14,16 +13,17 @@ let globalActiveComparison = null;
 
 /**
  * Alpine component data factory for pairwise image comparison.
- * @param {Cluster} cluster
+ * @param {ResolutionManagerComponent} resMgr
  */
-export function ComparisonManager(cluster) {
+export function ComparisonManager(resMgr) {
     return {
         isActive: false,
         isLoading: false,
         activePairIndex: 0,
-        /** @type {ClusterPair[]} */
-        pairs: [],
         
+        /** @type {ResolutionManagerComponent} */
+        resolutionManager: resMgr,
+
         /** @type {Map<number, string>} */
         fetchedPostsMap: new Map(),
 
@@ -47,12 +47,8 @@ export function ComparisonManager(cluster) {
         blinkInterval: null,
         blinkSpeed: 350,
 
-        /**
-         * @returns {ClusterPair | null}
-         */
-        get currentPair() {
-            return this.pairs[this.activePairIndex] || null;
-        },
+        /** @type {{a: ClusterPost, b: ClusterPost} | null} */
+        currentPair: null,
 
         /**
          * @param {'side-by-side' | 'swipe' | 'diff' | 'blink'} newMode
@@ -85,7 +81,6 @@ export function ComparisonManager(cluster) {
             this.stopBlink();
             this.isActive = false;
             this.isLoading = false;
-            this.pairs = [];
 
             if (globalActiveComparison === this) {
                 globalActiveComparison = null;
@@ -218,6 +213,7 @@ export function ComparisonManager(cluster) {
                 return;
             }
 
+            // TODO: Redesign during pair resolution refactor
             if (!this.currentPair?.a?.fileUrl || !this.currentPair?.b?.fileUrl) return;
 
             openImageModal({
@@ -231,8 +227,33 @@ export function ComparisonManager(cluster) {
             });
         },
 
-        async startComparison() {
-            if (!cluster || !cluster.posts || cluster.posts.length < 2) {
+        /**
+         * Updates currentPair from post IDs.
+         * @private
+         * @param {number} idA
+         * @param {number} idB
+         */
+        setPairFromIds(idA, idB) {
+            const resPostA = this.resolutionManager.getPost(idA);
+            const resPostB = this.resolutionManager.getPost(idB);
+
+            if (!resPostA || !resPostB) {
+                throw new Error(`Failed to retrieve post objects for pair [${idA}, ${idB}]`);
+            }
+
+            this.currentPair = {
+                a: resPostA.original,
+                b: resPostB.original
+            };
+        },
+
+        /**
+         * Initiates comparison session.
+         * @param {RootData | null} [rootData]
+         */
+        async startComparison(rootData) {
+            await this.resolutionManager.initializePosts()
+            if (!this.resolutionManager.cluster || !Array.isArray(this.resolutionManager.cluster.posts) || this.resolutionManager.cluster.posts.length < 2) {
                 showToast('Cluster must have at least 2 posts to compare.', 'error');
                 return;
             }
@@ -245,23 +266,36 @@ export function ComparisonManager(cluster) {
             this.isLoading = true;
 
             try {
-                await ensureClusterPostsInfo(cluster.posts);
-                const availableClusterPosts = cluster.posts.filter(p => !!p.fileUrl);
-
-                if (availableClusterPosts.length <= 1) {
-                    throw new Error('Could not retrieve file URLs for comparison.');
+                // 1. Mark all posts missing a fileUrl as 'unknown' in graph state
+                const validPosts = [];
+                for (const post of resMgr.cluster.posts) {
+                    if (!post.fileUrl) {
+                        this.resolutionManager.markUnknown(post.post_id);
+                    } else {
+                        validPosts.push(post);
+                    }
                 }
 
-                this.pairs = [];
-                for (let i = 0; i < availableClusterPosts.length - 1; i++) {
-                    this.pairs.push({
-                        a: availableClusterPosts[i],
-                        b: availableClusterPosts[i + 1],
-                        relationship: null
-                    });
+                // 2. Validate posts with images
+                if (validPosts.length === 0) {
+                    throw new Error('No posts in this cluster have valid image URLs.');
                 }
 
-                this.activePairIndex = 0;
+                if (validPosts.length === 1) {
+                    showToast('Only one post with image available. Skipping comparison step.', 'info');
+                    this.proceedToReconciliation(rootData);
+                    return;
+                }
+
+                // 3. Obtain initial pair
+                const pairIds = this.resolutionManager.getNextPair();
+                if (!pairIds) {
+                    showToast('No pairs require comparison. Proceeding to reconciliation.', 'info');
+                    this.proceedToReconciliation(rootData);
+                    return;
+                }
+
+                this.setPairFromIds(pairIds[0], pairIds[1]);
                 this.isActive = true;
 
             } catch (err) {
@@ -278,8 +312,6 @@ export function ComparisonManager(cluster) {
          * @param {RootData | null} [rootData]
          */
         proceedToReconciliation(rootData) {
-            cluster.pairs = this.pairs;
-            cluster._fetchedPosts = this.fetchedPostsMap;
             this.closeComparison();
             if (rootData) {
                 rootData.activeView = 'reconcile';
@@ -287,14 +319,27 @@ export function ComparisonManager(cluster) {
         },
 
         /**
-         * @param {string} type
+         * Applies chosen relationship type to current pair and advances.
+         * @param {'duplicate' | 'variant' | 'unrelated'} type
+         * @param {RootData | null} [rootData]
          */
-        setRelationship(type) {
+        setRelationship(type, rootData) {
             if (!this.currentPair) return;
-            this.currentPair.relationship = type;
 
-            if (this.activePairIndex < this.pairs.length - 1) {
-                this.activePairIndex++;
+            const idA = this.currentPair.a.post_id;
+            const idB = this.currentPair.b.post_id;
+
+            // 1. Record relationship in ResolutionManager graph
+            this.resolutionManager.addGraphEdge(type, idA, idB);
+
+            // 2. Obtain next pair needed to map relationships
+            const nextPairIds = this.resolutionManager.getNextPair();
+
+            if (nextPairIds) {
+                this.setPairFromIds(nextPairIds[0], nextPairIds[1]);
+            } else {
+                showToast('All image relationships resolved!', 'success');
+                this.proceedToReconciliation(rootData);
             }
         }
     };

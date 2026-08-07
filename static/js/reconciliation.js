@@ -2,25 +2,33 @@
 import Alpine from 'alpinejs';
 /** @type {any} */ (window).Alpine = Alpine;
 
-import { ensureClusterPostsInfo } from './e621_api.js';
 import { showToast } from './toasts.js';
 import { tagManager } from './tags.js';
+import { ResolutionPost } from './resolution.js';
+
+/**
+ * @typedef {Object} RootData
+ * @property {string} activeView
+ */
 
 /** @type {any} */
 let globalActiveReconciliation = null;
 
 /**
  * Alpine component factory for tag reconciliation and classification graphs.
- * @param {Cluster} cluster
+ * @param {ResolutionManagerComponent} manager
  */
-export function ReconciliationManager(cluster) {
+export function ReconciliationManager(manager) {
     return {
         isActive: false,
         isLoading: false,
+        isSummary: false,
 
-        /** @type {Array<{ id: number, type: string, postIds: number[] }>} */
-        graphs: [],
+        /** @type {ResolutionManagerComponent} */
+        resolutionManager: manager,
+
         activeGraphIndex: 0,
+        activeRhsIndex: 0,
 
         /** @type {number|null} */
         selectedSuperiorId: null,
@@ -30,23 +38,33 @@ export function ReconciliationManager(cluster) {
         /** @type {number|null} */
         lhsPostId: null,
 
-        /** @type {PostRating|null} */
-        activeRating: null,
-        /** @type {PostRating|null} */
-        originalRating: null,
-
-        /** @type {string[]} */
-        lhsTags: [],
-        /** @type {Set<string>} */
-        originalLhsTagNames: new Set(),
-        /** @type {Set<string>} */
-        newTags: new Set(),
-        /** @type {Array<string | TagObj>} */
-        removedLhsTags: [],
         tagInput: '',
+        hoveredImplicationData: null,
 
+        /**
+         * Filter resolution graphs down to duplicate graphs only.
+         * @returns {import('./resolution.js').ResolutionGraph[]}
+         */
+        get duplicateGraphs() {
+            if (!this.resolutionManager?.graphs) return [];
+            return this.resolutionManager.graphs.filter(g => g.type === 'duplicate');
+        },
+
+        /**
+         * Get current active duplicate ResolutionGraph.
+         * @returns {import('./resolution.js').ResolutionGraph|null}
+         */
         get currentGraph() {
-            return this.graphs[this.activeGraphIndex] || null;
+            return this.duplicateGraphs[this.activeGraphIndex] || null;
+        },
+
+        /**
+         * Retrieves the editable working state ResolutionPost for the active LHS post.
+         * @returns {ResolutionPost|undefined}
+         */
+        get lhsResolutionPost() {
+            if (!this.currentGraph || !this.lhsPostId) return undefined;
+            return this.resolutionManager.getPost(this.lhsPostId);
         },
 
         /**
@@ -54,11 +72,50 @@ export function ReconciliationManager(cluster) {
          * @returns {ClusterPost | null}
          */
         getLocalClusterPost(postId) {
-            if (!cluster?.posts || !postId) return null;
-            const post = cluster.posts.find(p => p.post_id === postId);
-            if (!post) return null;
+            return this.resolutionManager.getPost(postId)?.original || null;
+        },
 
-            return post;
+        get lhsPost() {
+            return this.lhsResolutionPost?.original || null;
+        },
+
+        get lhsTags() {
+            return this.lhsResolutionPost?.tags || [];
+        },
+
+        get originalLhsTagNames() {
+            const resPost = this.lhsResolutionPost;
+            if (!resPost) return new Set();
+            return new Set(resPost.original.tags || []);
+        },
+
+        get newTags() {
+            const resPost = this.lhsResolutionPost;
+            if (!resPost) return new Set();
+            const origSet = this.originalLhsTagNames;
+            return new Set(resPost.tags.filter(t => !origSet.has(t)));
+        },
+
+        get removedLhsTags() {
+            const resPost = this.lhsResolutionPost;
+            if (!resPost) return [];
+            const currentSet = new Set(resPost.tags);
+            const originalTags = resPost.original.tags || [];
+            return originalTags.filter(t => !currentSet.has(t));
+        },
+
+        get activeRating() {
+            return this.lhsResolutionPost?.rating || null;
+        },
+
+        set activeRating(val) {
+            if (this.lhsResolutionPost && val) {
+                this.lhsResolutionPost.rating = val;
+            }
+        },
+
+        get originalRating() {
+            return this.lhsResolutionPost?.original.rating || null;
         },
 
         getEffectiveLhsRating() {
@@ -67,21 +124,52 @@ export function ReconciliationManager(cluster) {
 
         get orderedPostIds() {
             if (!this.currentGraph) return [];
-            if (!this.lhsPostId) return this.currentGraph.postIds;
-            const remaining = this.currentGraph.postIds.filter(id => id !== this.lhsPostId);
+            const postIds = Array.from(this.currentGraph.posts);
+            if (!this.lhsPostId) return postIds;
+            const remaining = postIds.filter(id => id !== this.lhsPostId);
             return [this.lhsPostId, ...remaining];
         },
 
-        get lhsPost() {
-            return (this.currentGraph && this.lhsPostId) ? this.getLocalClusterPost(this.lhsPostId) : null;
+        /**
+         * Get remaining post IDs in current graph excluding the kept post.
+         * @returns {number[]}
+         */
+        get rhsPostIds() {
+            if (!this.currentGraph || !this.selectedSuperiorId) return [];
+            return Array.from(this.currentGraph.posts).filter(id => id !== this.selectedSuperiorId);
         },
 
+        /**
+         * Get currently active RHS comparison post ID.
+         * @returns {number|null}
+         */
+        get currentRhsPostId() {
+            return this.rhsPostIds[this.activeRhsIndex] ?? null;
+        },
+
+        /**
+         * Get active single RHS post for comparison/retagging.
+         * @returns {ClusterPost[]}
+         */
         get rhsPosts() {
-            if (!this.currentGraph || !this.lhsPostId) return [];
-            return this.currentGraph.postIds
-                .filter(id => id !== this.lhsPostId)
-                .map(id => this.getLocalClusterPost(id))
-                .filter(Boolean);
+            if (!this.currentRhsPostId) return [];
+            const post = this.getLocalClusterPost(this.currentRhsPostId);
+            return post ? [post] : [];
+        },
+
+        /**
+         * Dynamic button label based on retagging and navigation progress.
+         * @returns {string}
+         */
+        get nextButtonLabel() {
+            if (!this.selectedSuperiorId) return 'Next Graph';
+            if (this.activeRhsIndex < this.rhsPostIds.length - 1) {
+                return 'Next Post';
+            }
+            if (this.activeGraphIndex < this.duplicateGraphs.length - 1) {
+                return 'Next Graph';
+            }
+            return 'Summary';
         },
 
         get isRatingChanged() {
@@ -89,9 +177,9 @@ export function ReconciliationManager(cluster) {
         },
 
         get hasRatingConflict() {
-            if (this.currentGraph?.type !== 'duplicate') return false;
+            if (!this.currentGraph) return false;
 
-            const graphPosts = this.currentGraph.postIds
+            const graphPosts = Array.from(this.currentGraph.posts)
                 .map(id => this.getLocalClusterPost(id))
                 .filter(Boolean);
 
@@ -100,7 +188,7 @@ export function ReconciliationManager(cluster) {
         },
 
         /**
-         * Helper to safely extract a flat array of tag strings from a target (array, post, or object).
+         * Helper to safely extract a flat array of tag strings from a target.
          * @param {any} target
          * @returns {{ flatTags: string[], post: ClusterPost | null }}
          */
@@ -111,13 +199,9 @@ export function ReconciliationManager(cluster) {
                 return { flatTags: target, post: null };
             }
 
-            if (target === this.lhsTags) {
-                return { flatTags: this.lhsTags, post: null };
-            }
-
-            const postId = target.post_id;
+            const postId = target.post_id || target.original?.post_id;
             const localPost = postId ? this.getLocalClusterPost(postId) : null;
-            const rawTags = localPost?.tags || target.tags || [];
+            const rawTags = target.tags || localPost?.tags || [];
 
             let flatTags = [];
             if (Array.isArray(rawTags)) {
@@ -155,7 +239,7 @@ export function ReconciliationManager(cluster) {
          * @param {any} target
          */
         getImplicationChain(postId, tagName, target) {
-            const targetId = postId || target?.post_id || null;
+            const targetId = postId || target?.post_id || target?.original?.post_id || null;
             let flatTags = [];
 
             if (targetId && targetId === this.lhsPostId) {
@@ -213,18 +297,11 @@ export function ReconciliationManager(cluster) {
             }
             globalActiveReconciliation = this;
             this.isLoading = true;
+            this.isSummary = false;
 
             try {
-                // Ensure tag data is loaded before starting
-                if (!tagManager.isLoaded) {
-                    await tagManager.init();
-                }
-
-                await ensureClusterPostsInfo(cluster.posts);
-                this.buildGraphsFromCluster();
-
-                if (this.graphs.length === 0) {
-                    throw new Error('No classified graphs found to reconcile.');
+                if (this.duplicateGraphs.length === 0) {
+                    throw new Error('No duplicate graphs found in ResolutionManager to reconcile.');
                 }
 
                 this.activeGraphIndex = 0;
@@ -240,28 +317,11 @@ export function ReconciliationManager(cluster) {
             }
         },
 
-        buildGraphsFromCluster() {
-            if (!cluster.pairs || cluster.pairs.length === 0) {
-                this.graphs = [{
-                    id: 1,
-                    type: cluster.default_type || 'duplicate',
-                    postIds: cluster.posts.map(p => p.post_id)
-                }];
-                return;
-            }
-
-            this.graphs = cluster.pairs.map((pair, idx) => ({
-                id: idx + 1,
-                type: pair.relationship || 'duplicate',
-                postIds: [pair.a.post_id, pair.b.post_id]
-            }));
-        },
-
         /**
          * @param {number} idx
          */
         selectGraph(idx) {
-            if (idx < 0 || idx >= this.graphs.length) return;
+            if (idx < 0 || idx >= this.duplicateGraphs.length) return;
             this.activeGraphIndex = idx;
             this.setupCurrentGraph();
         },
@@ -273,84 +333,67 @@ export function ReconciliationManager(cluster) {
             this.selectedParentId = null;
             this.customParentId = '';
             this.lhsPostId = null;
-            this.syncLhsState();
+            this.activeRhsIndex = 0;
+            this.isSummary = false;
         },
 
         /**
+         * Selects the superior (kept) post for the active duplicate graph.
+         * Flags all other posts in the graph (ResolutionPost.flag = true).
          * @param {number} postId
          */
         selectSuperior(postId) {
-            if (!postId) return;
+            if (!postId || !this.currentGraph) return;
+
             this.selectedSuperiorId = postId;
             this.lhsPostId = postId;
-            this.syncLhsState();
-        },
+            this.activeRhsIndex = 0;
 
-        syncLhsState() {
-            this.activeRating = null;
-            this.originalRating = null;
-            this.newTags = new Set();
-            this.removedLhsTags = [];
-
-            if (!this.lhsPostId) {
-                this.lhsTags = [];
-                this.originalLhsTagNames = new Set();
-                return;
+            // Set ResolutionPost.flag = true on all other posts in the duplicate graph
+            for (const pId of this.currentGraph.posts) {
+                const resPost = this.resolutionManager.getPost(pId);
+                if (resPost) {
+                    resPost.flag = (pId !== postId);
+                }
             }
 
-            const post = this.getLocalClusterPost(this.lhsPostId);
-            const { flatTags } = this.extractFlatTagsAndPost(post);
-
-            this.lhsTags = [...flatTags];
-            this.originalLhsTagNames = new Set(flatTags);
-            this.originalRating = post?.rating || null;
+            this.resolutionManager.resolveDuplicateGraph(this.currentGraph, postId);
         },
 
         /**
          * @param {string} tagName
          */
         addTagWithImplications(tagName) {
+            const resPost = this.lhsResolutionPost;
+            if (!resPost) return;
+
             const fullImpliedChain = this.getAllImpliedTags(tagName);
             const tagsToAdd = [tagName, ...fullImpliedChain];
 
             tagsToAdd.forEach(t => {
-                if (!this.lhsTags.includes(t)) {
-                    this.lhsTags.push(t);
-
-                    if (!this.originalLhsTagNames.has(t)) {
-                        this.newTags.add(t);
-                    }
-                }
-
-                const remIdx = this.removedLhsTags.findIndex(rt => (typeof rt === 'string' ? rt === t : rt.name === t));
-                if (remIdx !== -1) {
-                    this.removedLhsTags.splice(remIdx, 1);
+                if (!resPost.tags.includes(t)) {
+                    resPost.tags.push(t);
                 }
             });
         },
 
         /**
-         * @param {TagObj} tagObj
+         * @param {TagObj|string} tagObj
          */
         removeTagWithImplicators(tagObj) {
-            const chain = this.getImplicationChain(this.lhsPostId, tagObj.name, this.lhsTags);
+            const resPost = this.lhsResolutionPost;
+            if (!resPost) return;
 
-            const toRemove = new Set([tagObj.name]);
+            const tagName = typeof tagObj === 'string' ? tagObj : tagObj.name;
+            const chain = this.getImplicationChain(this.lhsPostId, tagName, resPost.tags);
+
+            const toRemove = new Set([tagName]);
             if (chain) {
                 chain.directImplicators?.forEach(t => toRemove.add(t));
                 chain.indirectImplicators?.forEach(t => toRemove.add(t));
             }
 
-            this.lhsTags = this.lhsTags.filter(t => {
-                if (toRemove.has(t)) {
-                    if (this.originalLhsTagNames.has(t) && !this.removedLhsTags.some(rt => (typeof rt === 'string' ? rt === t : rt.name === t))) {
-                        this.removedLhsTags.push(t);
-                    }
-                    this.newTags.delete(t);
-                    return false;
-                }
-                return true;
-            });
+            resPost.tags = resPost.tags.filter(t => !toRemove.has(t));
         },
 
         addCustomTag() {
@@ -361,21 +404,37 @@ export function ReconciliationManager(cluster) {
             this.tagInput = '';
         },
 
-        nextGraph() {
-            if (this.activeGraphIndex < this.graphs.length - 1) {
+        /**
+         * Advances reconciliation through RHS posts, duplicate graphs, or to Summary.
+         * @param {RootData} rootData
+         */
+        advance(rootData) {
+            if (this.activeRhsIndex < this.rhsPostIds.length - 1) {
+                this.activeRhsIndex++;
+            } else if (this.activeGraphIndex < this.duplicateGraphs.length - 1) {
                 this.selectGraph(this.activeGraphIndex + 1);
+            } else {
+                this.proceedToSummary(rootData)
             }
         },
 
         closeReconciliation() {
             this.isActive = false;
             this.isLoading = false;
-            this.graphs = [];
 
             if (globalActiveReconciliation === this) {
                 globalActiveReconciliation = null;
             }
-        }
+        },
+        /**
+         * @param {RootData | null} [rootData]
+         */
+        proceedToSummary(rootData) {
+            this.closeReconciliation();
+            if (rootData) {
+                rootData.activeView = 'summary';
+            }
+        },
     };
 }
 
@@ -456,7 +515,6 @@ document.addEventListener('alpine:init', () => {
          * @param {TagSearchResult} tagObj
          */
         selectResult(tagObj) {
-            // Update tagInput in parent Alpine scope
             // @ts-expect-error - tagInput is inherited from parent scope
             this.tagInput = tagObj.name;
             this.isOpen = false;

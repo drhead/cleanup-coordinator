@@ -136,7 +136,7 @@ async def get_project_batches(
                 project_id,
                 batch_number,
                 status
-            FROM batches 
+            FROM v_batches 
             WHERE project_id = $1 
             ORDER BY batch_number ASC;
             """,
