@@ -19,48 +19,80 @@
                     <th class="py-2 px-3">Progress</th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-gray-800/60">
-                <template x-for="batch in $store.batches.batches" :key="batch.batch_id">
-                    <!-- Batch Table Row -->
-                    <tr class="hover:bg-gray-900 cursor-pointer transition"
-                        @click="viewBatch(batch)">
-                        
-                        <!-- Batch Number Column -->
-                        <td class="py-2 px-3 font-bold text-gray-300 text-center" x-text="batch.batch_number"></td>
-                        
-                        <!-- Batch Status & Expiry Column -->
-                        <td class="py-2 px-3 whitespace-nowrap">
-                            <div class="flex items-center space-x-2">
-                                <span class="px-2 py-0.5 rounded text-[10px] font-bold"
-                                      :class="getBatchStatusClass(batch)"
-                                      x-text="getBatchStatusLabel(batch)"></span>
-                                
-                                <!-- Countdown Timer on Claimed Batches -->
-                                <template x-if="batch.status === 'CLAIMED' && batch.leased_until">
-                                    <span class="text-[11px] text-amber-400 font-semibold"
-                                          x-text="$store.batches.getRemainingTime(batch.leased_until)"></span>
-                                </template>
-                            </div>
-                        </td>
+            
+            <!-- Skeleton Loader (Shown when batches array is empty) -->
+            <template x-if="!$store.batches.batches || $store.batches.batches.length === 0">
+                <tbody class="divide-y divide-gray-800/60 animate-pulse">
+                    <template x-for="i in 5" :key="i">
+                        <tr>
+                            <!-- Skeleton Number -->
+                            <td class="py-3 px-3 text-center">
+                                <div class="h-3 w-4 bg-gray-800 rounded mx-auto"></div>
+                            </td>
+                            <!-- Skeleton Status Badge -->
+                            <td class="py-3 px-3">
+                                <div class="h-4 w-16 bg-gray-800 rounded"></div>
+                            </td>
+                            <!-- Skeleton Progress Boxes -->
+                            <td class="py-3 px-4">
+                                <div class="flex items-center space-x-1.5">
+                                    <div class="w-2.5 h-2.5 rounded-sm bg-gray-800"></div>
+                                    <div class="w-2.5 h-2.5 rounded-sm bg-gray-800"></div>
+                                    <div class="w-2.5 h-2.5 rounded-sm bg-gray-800"></div>
+                                    <div class="w-2.5 h-2.5 rounded-sm bg-gray-800"></div>
+                                    <div class="w-2.5 h-2.5 rounded-sm bg-gray-800"></div>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </template>
 
-                        <!-- Batch Progress Column -->
-                        <td class="py-2.5 px-4">
-                            <div class="flex items-center space-x-1.5 flex-wrap gap-y-1">
-                                <template x-for="cluster in batch.clusters" :key="cluster.cluster_id">
-                                    <div class="w-2.5 h-2.5 rounded-sm transition-all"
-                                         :class="{
-                                             'bg-green-500': cluster.is_resolved,
-                                             'bg-zinc-900 border border-gray-800': !cluster.is_resolved && cluster.is_blacklisted,
-                                             'bg-gray-800 border border-gray-700': !cluster.is_resolved && !cluster.is_blacklisted
-                                         }"
-                                         :title="`Cluster #${cluster.cluster_index}: ${cluster.is_resolved ? 'Resolved' : cluster.is_blacklisted ? 'Blacklisted' : 'Pending'}`">
-                                    </div>
-                                </template>
-                            </div>
-                        </td>
-                    </tr>
-                </template>
-            </tbody>
+            <!-- Actual Table Rows (Shown when batches exist) -->
+            <template x-if="$store.batches.batches && $store.batches.batches.length > 0">
+                <tbody class="divide-y divide-gray-800/60">
+                    <template x-for="batch in $store.batches.batches" :key="batch.batch_id">
+                        <!-- Batch Table Row -->
+                        <tr class="hover:bg-gray-900 cursor-pointer transition"
+                            @click="viewBatch(batch)">
+                            
+                            <!-- Batch Number Column -->
+                            <td class="py-2 px-3 font-bold text-gray-300 text-center" x-text="batch.batch_number"></td>
+                            
+                            <!-- Batch Status & Expiry Column -->
+                            <td class="py-2 px-3 whitespace-nowrap">
+                                <div class="flex items-center space-x-2">
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold"
+                                          :class="getBatchStatusClass(batch)"
+                                          x-text="getBatchStatusLabel(batch)"></span>
+                                    
+                                    <!-- Countdown Timer on Claimed Batches -->
+                                    <template x-if="batch.status === 'CLAIMED' && batch.leased_until">
+                                        <span class="text-[11px] text-amber-400 font-semibold"
+                                              x-text="$store.batches.getRemainingTime(batch.leased_until)"></span>
+                                    </template>
+                                </div>
+                            </td>
+
+                            <!-- Batch Progress Column -->
+                            <td class="py-2.5 px-4">
+                                <div class="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                                    <template x-for="cluster in batch.clusters" :key="cluster.cluster_id">
+                                        <div class="w-2.5 h-2.5 rounded-sm transition-all"
+                                             :class="{
+                                                 'bg-green-500': cluster.is_resolved,
+                                                 'bg-zinc-900 border border-gray-800': !cluster.is_resolved && cluster.is_blacklisted,
+                                                 'bg-gray-800 border border-gray-700': !cluster.is_resolved && !cluster.is_blacklisted
+                                             }"
+                                             :title="`Cluster #${cluster.cluster_index}: ${cluster.is_resolved ? 'Resolved' : cluster.is_blacklisted ? 'Blacklisted' : 'Pending'}`">
+                                        </div>
+                                    </template>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </template>
         </table>
     </div>
 </div>
