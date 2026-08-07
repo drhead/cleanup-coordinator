@@ -193,6 +193,7 @@ export class BatchManager {
         if (!this.activeProject) return;
 
         try {
+            // 1. Fetch public batch data and dynamic leases in parallel
             const [batchesRes, leasesRes] = await Promise.all([
                 fetch(`/api/v1/projects/${this.activeProject.project_id}/batches`, {
                     headers: { 'Accept': 'application/msgpack' }
@@ -203,14 +204,48 @@ export class BatchManager {
             if (!batchesRes.ok) return;
 
             const batchesBuffer = await batchesRes.arrayBuffer();
-
             const batchesData = /** @type {{ batches: Batch[] }} */ (decode(batchesBuffer));
-
             const activeLeases = leasesRes.ok ? /** @type {{ leases: Lease[] }} */ (await leasesRes.json()).leases || [] : [];
             const incomingBatches = batchesData.batches || [];
 
+            // 2. Index active leases by batch_id for O(1) lookups
+            const activeLeasesMap = new Map();
+            let myActiveLease = null;
+
+            for (const lease of activeLeases) {
+                const expiry = new Date(lease.leased_until).getTime();
+                if (expiry <= this.nowTimestamp) continue; // Skip expired
+
+                activeLeasesMap.set(lease.batch_id, lease);
+
+                // Track current user's active lease for top banner
+                if (lease.project_id === this.activeProject.project_id && lease.is_leased_by_you) {
+                    myActiveLease = {
+                        batch_id: lease.batch_id,
+                        batch_number: lease.batch_number,
+                        project_id: lease.project_id,
+                        leased_until: lease.leased_until,
+                        is_leased_by_you: true
+                    };
+                }
+            }
+            this.activeLease = myActiveLease;
+
+            /**
+             * Syncs dynamic lease state from the activeLeasesMap onto a batch object.
+             * @param {Batch} batch
+             * @returns {void}
+             */
+            const syncBatchLeaseState = (batch) => {
+                const lease = activeLeasesMap.get(batch.batch_id);
+                batch.leased_until = lease ? lease.leased_until : null;
+                batch.is_leased_by_you = lease ? Boolean(lease.is_leased_by_you) : false;
+            };
+
+            // 3. Reconcile incoming batches into state
             if (this.batches.length === 0) {
                 incomingBatches.forEach((b) => {
+                    syncBatchLeaseState(b);
                     if (b.clusters) {
                         b.clusters.forEach((c) => {
                             processCluster(c);
@@ -224,7 +259,9 @@ export class BatchManager {
             } else {
                 for (const newBatch of incomingBatches) {
                     let existingBatch = this.batches.find(b => b.batch_id === newBatch.batch_id);
+                    
                     if (!existingBatch) {
+                        syncBatchLeaseState(newBatch);
                         if (newBatch.clusters) {
                             newBatch.clusters.forEach((c) => {
                                 processCluster(c);
@@ -237,11 +274,13 @@ export class BatchManager {
                         continue;
                     }
 
+                    // Update core public fields from /batches
                     existingBatch.status = newBatch.status;
-                    existingBatch.is_leased_by_you = newBatch.is_leased_by_you;
                     existingBatch.resolved_count = newBatch.resolved_count;
                     existingBatch.total_clusters = newBatch.total_clusters;
-                    existingBatch.leased_until = newBatch.leased_until;
+                    
+                    // Sync dynamic lease state from /leases
+                    syncBatchLeaseState(existingBatch);
 
                     if (!existingBatch.clusters) {
                         existingBatch.clusters = [];
@@ -259,7 +298,7 @@ export class BatchManager {
                                 existingCluster.is_resolved = newCluster.is_resolved;
                                 existingCluster.manual_resolution = newCluster.manual_resolution;
 
-                                // Reconcile posts in-place to retain object identity & tag cache where possible
+                                // Reconcile posts in-place to retain object identity & tag cache
                                 if (refreshedClusterId === existingCluster.cluster_id) {
                                     existingCluster.posts = newCluster.posts || [];
                                 } else if (newCluster.posts && Array.isArray(newCluster.posts)) {
@@ -269,12 +308,10 @@ export class BatchManager {
                                         const existingPost = existingPostsMap.get(newPost.post_id);
 
                                         if (existingPost) {
-                                            // Check if raw tags modified during polling
                                             const tagsChanged = JSON.stringify(existingPost.tags) !== JSON.stringify(newPost.tags);
 
                                             Object.assign(existingPost, newPost);
 
-                                            // Invalidate TagManager cache if tags actually changed
                                             if (tagsChanged) {
                                                 delete existingPost._tagsSignature;
                                                 delete existingPost._sortedTags;
@@ -300,24 +337,17 @@ export class BatchManager {
                 }
             }
 
+            // 4. Ensure existing batches not returned in incremental updates still have accurate lease state
+            for (const b of this.batches) {
+                syncBatchLeaseState(b);
+            }
+
+            // Restore activeBatch reference
             if (this.activeBatch) {
                 const found = this.batches.find(b => b.batch_id === this.activeBatch?.batch_id);
                 if (found) this.activeBatch = found;
             }
 
-            const myLease = activeLeases.find((l) => l.project_id === this.activeProject?.project_id && l.is_leased_by_you);
-            if (myLease) {
-                const expiry = new Date(myLease.leased_until).getTime();
-                this.activeLease = expiry > this.nowTimestamp ? {
-                    batch_id: myLease.batch_id,
-                    batch_number: myLease.batch_number,
-                    project_id: myLease.project_id,
-                    leased_until: myLease.leased_until,
-                    is_leased_by_you: myLease.is_leased_by_you
-                } : null;
-            } else {
-                this.activeLease = null;
-            }
         } catch (err) {
             if (silent) console.debug("[Polling] Sync failed:", err);
             else console.error("[Reload] Error loading batches:", err);

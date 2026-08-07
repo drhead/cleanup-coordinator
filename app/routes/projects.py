@@ -1,7 +1,6 @@
 """Projects router."""
 
-import hashlib
-from typing import Any, Iterable, cast
+from typing import Any
 from collections import defaultdict
 import gzip
 import brotli
@@ -9,9 +8,9 @@ import brotli
 from fastapi import APIRouter, Request, Response
 import msgspec
 import asyncpg
+import xxhash
 
 from app.db import get_db
-from app.leases import clear_expired_leases, get_client_ip
 
 router = APIRouter()
 
@@ -62,8 +61,6 @@ class Batch(msgspec.Struct, kw_only=True):
     project_id: str
     batch_number: int
     status: str
-    leased_until: str | None = None
-    is_leased_by_you: bool
     resolved_count: int
     total_clusters: int
     clusters: list[Cluster]
@@ -102,32 +99,32 @@ def parse_accept_encoding(header: str) -> set[str]:
             encodings.add(token)
     return encodings
 
-def _hashable_record(row: asyncpg.Record) -> tuple[Any, ...]:
-    """Converts a Record into a hashable tuple, replacing lists with tuples."""
-    vals: list[Any] = []
-    for v in row.values():
-        if isinstance(v, list):
-            vals.append(tuple(cast(Iterable[Any], v)))
-        else:
-            vals.append(v)
-    return tuple(vals)
+def compute_etag(
+    batches_rows: list[asyncpg.Record], flat_rows: list[asyncpg.Record]
+) -> str:
+    hasher = xxhash.xxh3_64()
 
+    for r in batches_rows:
+        hasher.update(hash(tuple(r)).to_bytes(8, "little", signed=True))
 
-def compute_rows_hash(*rows_lists: list[asyncpg.Record]) -> int:
-    """Recursively converts lists of Records into hashable tuples and returns their C hash."""
-    all_tuples = tuple(
-        tuple(_hashable_record(row) for row in rows)
-        for rows in rows_lists
-    )
-    return hash(all_tuples)
+    # Fixed schema where only index 8 (pool_ids) and index 10 (tags) are lists.
+    for r in flat_rows:
+        row_hash = hash((
+            r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7],
+            tuple(r[8]) if r[8] else (),
+            r[9],
+            tuple(r[10]) if r[10] else (),
+            r[11], r[12], r[13], r[14], r[15], r[16]
+        ))
+        hasher.update(row_hash.to_bytes(8, "little", signed=True))
+
+    return f'"{hasher.hexdigest()}"'
 
 @router.get("/api/v1/projects/{project_id}/batches")
 async def get_project_batches(
     project_id: str,
     request: Request
 ) -> Response:
-    await clear_expired_leases()
-    client_ip = get_client_ip(request)
 
     pool = get_db()
     async with pool.acquire() as conn:
@@ -135,13 +132,13 @@ async def get_project_batches(
         batches_rows = await conn.fetch(
             """
             SELECT 
-                b.*,
-                l.ip_address AS leased_by_ip,
-                l.expires_at AS leased_until
-            FROM batches b
-            LEFT JOIN leases l ON b.batch_id = l.batch_id
-            WHERE b.project_id = $1 
-            ORDER BY b.batch_number ASC
+                batch_id,
+                project_id,
+                batch_number,
+                status
+            FROM batches 
+            WHERE project_id = $1 
+            ORDER BY batch_number ASC;
             """,
             project_id,
         )
@@ -176,17 +173,21 @@ async def get_project_batches(
 
     # since our query is quite fast and is cachable by ReadySet we can ETag this
     # and avoid sending the payload
-    etag_hasher = hashlib.blake2b(digest_size=16)
-    etag_hasher.update(client_ip.encode("utf-8"))
-    data_hash = compute_rows_hash(batches_rows, flat_rows)
-    etag_hasher.update(data_hash.to_bytes(8, "little", signed=True))
-        
-    etag = f'"{etag_hasher.hexdigest()}"'
+    etag = compute_etag(batches_rows, flat_rows)
 
     # Check against incoming If-None-Match header
-    if_none_match = request.headers.get("if-none-match")
-    if if_none_match and if_none_match == etag:
-        return Response(status_code=304, headers={"ETag": etag, "Vary": "Accept-Encoding"})
+    if_none_match = request.headers.get("if-none-match") or request.headers.get("If-None-Match")
+    if if_none_match:
+        clean_if_none_match = if_none_match.strip().lstrip("W/")
+        if clean_if_none_match == etag:
+            return Response(
+                status_code=304,
+                headers={
+                    "ETag": etag,
+                    "Cache-Control": "no-cache",
+                    "Vary": "Accept-Encoding",
+                },
+            )
 
     # 3. Group in memory (Only reached if database data actually changed)
     clusters_by_batch: dict[int, dict[int, dict[str, Any]]] = defaultdict(
@@ -238,8 +239,6 @@ async def get_project_batches(
                 batch_id=b_id,
                 project_id=b_row["project_id"],
                 batch_number=b_row["batch_number"],
-                leased_until=b_row["leased_until"].isoformat() if b_row["leased_until"] else None,
-                is_leased_by_you=b_row["leased_by_ip"] == client_ip,
                 status=b_row["status"],
                 resolved_count=resolved_count,
                 total_clusters=len(cluster_list),
