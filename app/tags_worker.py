@@ -10,8 +10,6 @@ import brotli
 import httpx
 import msgspec
 
-from app.db import get_db
-
 logger = logging.getLogger("tags_worker")
 
 TAGS_EXPORT_URL = "https://static1.e621.net/data/db_export/tags.csv.gz"
@@ -187,23 +185,6 @@ async def sync_daily_tags_bundle() -> None:
 
             base_tags_map[tag_name] = (cat_id, post_count)
 
-        # 1. Execute DB Update
-        pool = get_db()
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                await conn.execute(
-                    """
-                    INSERT INTO tags (tag_name, category, post_count)
-                    SELECT * FROM unnest($1::text[], $2::int[], $3::bigint[])
-                    ON CONFLICT (tag_name) DO UPDATE SET
-                        category = EXCLUDED.category,
-                        post_count = EXCLUDED.post_count;
-                    """,
-                    tag_names,
-                    categories,
-                    post_counts,
-                )
-
         # ------------------------------------------------------------------
         # 4. Consolidate into TagMetadata and Apply Pruning Rules
         # ------------------------------------------------------------------
@@ -261,13 +242,6 @@ async def sync_daily_tags_bundle() -> None:
         logger.error(f"Failed to sync tags bundle: {e}", exc_info=True)
 
 
-async def is_tags_table_empty() -> bool:
-    pool = get_db()
-    async with pool.acquire() as conn:
-        count = await conn.fetchval("SELECT COUNT(*) FROM tags;")
-        return count == 0
-
-
 def seconds_until_next_pull() -> float:
     """Calculates seconds remaining until the next 06:00 UTC."""
     now = datetime.now(timezone.utc)
@@ -283,12 +257,11 @@ async def run_tags_worker() -> None:
     bundle_br = Path(f"{OUTPUT_CONSOLIDATED_MSGPACK}.br")
 
     if (
-        await is_tags_table_empty()
-        or not OUTPUT_CONSOLIDATED_MSGPACK.exists()
+        not OUTPUT_CONSOLIDATED_MSGPACK.exists()
         or not bundle_br.exists()
     ):
         logger.info(
-            "Tags missing in DB or pre-compressed bundle missing on disk. Running startup sync..."
+            "Pre-compressed bundle missing on disk. Running startup sync..."
         )
         await sync_daily_tags_bundle()
     else:

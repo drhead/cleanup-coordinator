@@ -13,7 +13,7 @@ from app.leases import lease_poller_loop
 from app.routes import batches, leases, projects, views, static_data
 from app.db import init_db_pool, close_db_pool
 
-
+ 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db_pool()

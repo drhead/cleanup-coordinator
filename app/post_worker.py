@@ -31,7 +31,7 @@ post_decoder = msgspec.json.Decoder(type=PostsResponse)
 async def refresh_posts_metadata(
     post_ids: list[int], client: httpx.AsyncClient | None = None
 ) -> list[dict[str, Any]]:
-    """Fetches canonical post metadata from e621 in 320-item chunks and updates cluster_posts, tags, and post_tags."""
+    """Fetches canonical post metadata from e621 in chunks and updates cluster_posts directly."""
     if not post_ids:
         return []
 
@@ -83,9 +83,7 @@ async def refresh_posts_metadata(
                         for r in rows
                     }
 
-            records_to_update: list[tuple[int | None, list[int], str, int]] = []
-            tags_to_upsert: set[tuple[str, str]] = set()
-            post_tags_to_insert: set[tuple[int, str]] = set()
+            records_to_update: list[tuple[int | None, list[int], list[str], str, int]] = []
 
             for post in posts:
                 if post.id in local_states:
@@ -96,21 +94,13 @@ async def refresh_posts_metadata(
                     ):
                         await refresh_post_flags(post.id, client)
 
-                tags_by_category: dict[str, list[str]] = {}
-                for category_name, tag_list in post.tags.items():
-                    if tag_list:
-                        cat_upper = category_name.upper()
-                        tags_by_category[cat_upper] = sorted(tag_list)
-                        for tag_name in tag_list:
-                            tags_to_upsert.add((tag_name, cat_upper))
-                            post_tags_to_insert.add((post.id, tag_name))
-
+                flat_tags = post.flat_tags()
                 parent_id = post.relationships.parent_id
                 rating = post.rating
                 pool_ids = post.pools
 
                 records_to_update.append(
-                    (parent_id, pool_ids, rating, post.id)
+                    (parent_id, pool_ids, flat_tags, rating, post.id)
                 )
 
                 updated_posts.append(
@@ -119,78 +109,46 @@ async def refresh_posts_metadata(
                         "parent_id": parent_id,
                         "pool_ids": pool_ids,
                         "rating": rating,
-                        "tags": tags_by_category,
+                        "tags": flat_tags,
                     }
                 )
 
-            affected_post_ids = list({pt[0] for pt in post_tags_to_insert})
+            if records_to_update:
+                parent_ids, pool_ids_list, tags_list, ratings, target_post_ids = zip(*records_to_update)
 
-            async with pool.acquire() as conn:
-                async with conn.transaction():
-                    # 1. Upsert master tags table with actual categories
-                    if tags_to_upsert:
-                        await conn.execute(
-                            """
-                            INSERT INTO tags (tag_name, category, post_count)
-                            SELECT unnest($1::text[]), unnest($2::text[]), 0
-                            ON CONFLICT (tag_name) DO UPDATE
-                            SET category = EXCLUDED.category;
-                            """,
-                            *zip(*tags_to_upsert)
-                        )
+                # Format Python lists into PostgreSQL array string literals
+                formatted_pool_ids = [f"{{{','.join(map(str, p))}}}" for p in pool_ids_list]
+                formatted_tags = [f"{{{','.join(t)}}}" for t in tags_list]  # Ensure tags with special chars are quoted if needed
 
-                    # 2. Clear existing tag mappings for these posts to handle removals
-                    if affected_post_ids:
-                        await conn.execute(
-                            """
-                            DELETE FROM post_tags
-                            WHERE post_id = ANY($1::bigint[]);
-                            """,
-                            affected_post_ids,
-                        )
-
-                    # 3. Insert the fresh set of post_tags mappings
-                    if post_tags_to_insert:
-                        await conn.execute(
-                            """
-                            INSERT INTO post_tags (post_id, tag_name)
-                            SELECT unnest($1::bigint[]), unnest($2::text[])
-                            ON CONFLICT (post_id, tag_name) DO NOTHING;
-                            """,
-                            *zip(*post_tags_to_insert)
-                        )
-
-                    # 4. Update scalar metadata on cluster_posts
-                    if records_to_update:
-                        parent_ids, pool_ids_list, ratings, target_post_ids = zip(*records_to_update)
-
-                        # Format list of ints into Postgres string literals: '{1,2,3}'
-                        formatted_pool_ids = [f"{{{','.join(map(str, p))}}}" for p in pool_ids_list]
-
-                        await conn.execute(
-                            """
-                            UPDATE cluster_posts cp
-                            SET parent_id = u.parent_id,
-                                pool_ids = u.pool_ids::int[],
-                                rating = u.rating
-                            FROM UNNEST(
-                                $1::bigint[],
-                                $2::text[],
-                                $3::text[],
-                                $4::bigint[]
-                            ) AS u(parent_id, pool_ids, rating, post_id)
-                            WHERE cp.post_id = u.post_id
-                            AND (
-                                cp.parent_id IS DISTINCT FROM u.parent_id OR
-                                cp.pool_ids IS DISTINCT FROM u.pool_ids::int[] OR
-                                cp.rating IS DISTINCT FROM u.rating
-                            );
-                            """,
-                            list(parent_ids),
-                            formatted_pool_ids,
-                            list(ratings),
-                            list(target_post_ids),
-                        )
+                async with pool.acquire() as conn:
+                    await conn.execute(
+                        """
+                        UPDATE cluster_posts cp
+                        SET parent_id = u.parent_id,
+                            pool_ids = u.pool_ids::int[],
+                            tags = u.tags::text[],
+                            rating = u.rating
+                        FROM UNNEST(
+                            $1::bigint[],
+                            $2::text[],
+                            $3::text[],
+                            $4::text[],
+                            $5::bigint[]
+                        ) AS u(parent_id, pool_ids, tags, rating, post_id)
+                        WHERE cp.post_id = u.post_id
+                        AND (
+                            cp.parent_id IS DISTINCT FROM u.parent_id OR
+                            cp.pool_ids IS DISTINCT FROM u.pool_ids::int[] OR
+                            cp.tags IS DISTINCT FROM u.tags::text[] OR
+                            cp.rating IS DISTINCT FROM u.rating
+                        );
+                        """,
+                        list(parent_ids),
+                        formatted_pool_ids,
+                        formatted_tags,
+                        list(ratings),
+                        list(target_post_ids),
+                    )
 
     except Exception as e:
         print(f"[MetadataFetch] Error during bulk fetch: {e}")

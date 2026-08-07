@@ -155,7 +155,7 @@ async def get_project_batches(
         # 2. Fetch clusters and post metadata
         flat_rows = await conn.fetch(
             """
-            SELECT c.batch_id, c.cluster_id, c.cluster_index, c.note, c.is_resolved, 
+            SELECT c.batch_id, c.cluster_id, c.cluster_index, c.custom_note AS note, c.is_resolved, 
                    c.manual_resolution, cp.post_id, cp.parent_id, cp.pool_ids, 
                    cp.rating, cp.tags,
                    cp.image_width, cp.image_height, cp.image_format, cp.image_quality,
