@@ -38,6 +38,12 @@ const CATEGORY_MAP = {
  * @property {string|null} [alias_to]
  */
 
+/**
+ * Yields execution back to the browser event loop so DOM updates & animations can render.
+ * @returns {Promise<void>}
+ */
+const yieldToMain = () => new Promise(resolve => setTimeout(resolve, 0));
+
 export class TagManager {
     constructor() {
         /** @type {TagInfoMap} */
@@ -53,17 +59,32 @@ export class TagManager {
         this.error = null;
     }
 
+/**
+     * Helper to update progress state and report to caller.
+     * @param {string} status 
+     * @param {number} percent 
+     * @param {((status: string, percent: number) => void)} [onProgress]
+     */
+    _reportProgress(status, percent, onProgress) {
+        this.loadingStatus = status;
+        this.loadingProgress = percent;
+        if (onProgress) {
+            onProgress(status, percent);
+        }
+    }
+
     /**
      * Initializes and loads the consolidated MessagePack data file into tagInfoMap
      * and builds the prefix search index.
+     * @param {((status: string, percent: number) => void)} [onProgress] Optional progress callback
      */
-    async init() {
+    async init(onProgress) {
         if (this.isLoading || this.isLoaded) return;
 
         this.isLoading = true;
         this.error = null;
-        this.loadingProgress = 10;
-        this.loadingStatus = 'Fetching unified tag database...';
+        this._reportProgress('Fetching tag bundle...', 10, onProgress);
+        await yieldToMain();
 
         try {
             const response = await fetch('/static/data/tags_bundle.msgpack', {
@@ -74,14 +95,14 @@ export class TagManager {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
-            this.loadingProgress = 50;
-            this.loadingStatus = 'Decoding tag database...';
+            this._reportProgress('Unpacking tag bundle...', 50, onProgress);
+            await yieldToMain();
 
             const buffer = await response.arrayBuffer();
             const rawBundle = /** @type {Record<string, RawTagBundleEntry>} */ (decode(buffer)) || {};
 
-            this.loadingProgress = 75;
-            this.loadingStatus = 'Processing tag graph...';
+            this._reportProgress('Processing tag graph...', 75, onProgress);
+            await yieldToMain();
 
             /** @type {TagInfoMap} */
             const parsedMap = {};
@@ -108,20 +129,21 @@ export class TagManager {
 
             this.tagInfoMap = parsedMap;
 
-            this.loadingProgress = 90;
-            this.loadingStatus = 'Building search index...';
+            this._reportProgress('Building search index...', 90, onProgress);
+            await yieldToMain();
 
             // Build sorted key array for fast binary-search prefix matching
             this.searchKeys = Object.keys(parsedMap).sort();
 
-            this.loadingProgress = 100;
-            this.loadingStatus = 'Tag data ready';
+            this._reportProgress('Tag data ready', 100, onProgress);
+            await yieldToMain();
             this.isLoaded = true;
         } catch (err) {
             console.error('[TagManager] Failed to load tag data:', err);
             // @ts-expect-error
             this.error = err.message || 'Failed to load tag data';
             showToast('Failed to load tag metadata.', 'error');
+            throw err; // Re-throw so app.js catch block catches it
         } finally {
             this.isLoading = false;
         }
@@ -668,5 +690,4 @@ export const tagManager = new TagManager();
 // Self-register on Alpine init
 document.addEventListener('alpine:init', () => {
     Alpine.store('tags', tagManager);
-    tagManager.init();
 });

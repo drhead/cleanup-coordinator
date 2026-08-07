@@ -20,7 +20,9 @@
     <!-- 18+ Age Gate Interstitial -->
     <load src="/templates/components/age-modal.html" />
 
-    <template x-if="isAgeVerified">
+    <load src="/templates/components/loading.html" />
+
+    <template x-if="isAgeVerified && !isLoading">
         <div>
             <!-- Top Navigation Header -->
             <header class="bg-gray-900 border-b border-gray-800 px-3 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-50">
