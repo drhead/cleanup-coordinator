@@ -18,8 +18,8 @@ const CATEGORY_MAP = {
 
 /**
  * @typedef {Object} TagInfo
- * @property {string[]} [implies]
- * @property {string[]} [implied_by]
+ * @property {string[]} implies
+ * @property {string[]} implied_by
  * @property {TagCategory} category
  * @property {number} tag_count
  * @property {string} [alias_to]
@@ -33,8 +33,8 @@ const CATEGORY_MAP = {
  * @typedef {Object} RawTagBundleEntry
  * @property {number} category
  * @property {number} count
- * @property {string[]} [implies]
- * @property {string[]} [implied_by]
+ * @property {string[]} implies
+ * @property {string[]} implied_by
  * @property {string|null} [alias_to]
  */
 
@@ -43,6 +43,87 @@ const CATEGORY_MAP = {
  * @returns {Promise<void>}
  */
 const yieldToMain = () => new Promise(resolve => setTimeout(resolve, 0));
+
+// Helper to open/initialize IndexedDB
+function openTagDatabase() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open('TagManagerCacheDB', 1);
+        request.onupgradeneeded = (event) => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains('cache')) {
+                db.createObjectStore('cache');
+            }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+// Get the unix timestamp of the most recent 06:15 UTC boundary
+function getLatestValidCacheCutoff() {
+    const now = new Date();
+    const cutoff = new Date(now);
+
+    // Set to 06:15:00.000 UTC today
+    cutoff.setUTCHours(6, 15, 0, 0);
+
+    // If current time is earlier than 06:15 UTC today, the last valid boundary was yesterday 06:15 UTC
+    if (now < cutoff) {
+        cutoff.setUTCDate(cutoff.getUTCDate() - 1);
+    }
+
+    return cutoff.getTime();
+}
+
+async function getCachedTagMap() {
+    try {
+        const db = await openTagDatabase();
+        return new Promise((resolve) => {
+            const tx = db.transaction('cache', 'readonly');
+            const store = tx.objectStore('cache');
+            
+            const metaReq = store.get('cache_timestamp');
+            const dataReq = store.get('tagInfoMap');
+
+            tx.oncomplete = () => {
+                const timestamp = metaReq.result;
+                const tagMap = dataReq.result;
+                const validCutoff = getLatestValidCacheCutoff();
+
+                if (timestamp && tagMap && timestamp >= validCutoff) {
+                    resolve(tagMap);
+                } else {
+                    resolve(null); // Cache stale or missing
+                }
+            };
+            tx.onerror = () => resolve(null);
+        });
+    } catch {
+        return null;
+    }
+}
+
+/** 
+ * @param {TagInfoMap} parsedMap 
+ * @returns {Promise<void>}
+ */
+async function setCachedTagMap(parsedMap) {
+    try {
+        const db = await openTagDatabase();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction('cache', 'readwrite');
+            const store = tx.objectStore('cache');
+            
+            store.put(Date.now(), 'cache_timestamp');
+            store.put(parsedMap, 'tagInfoMap');
+
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+    } catch (err) {
+        console.warn('[TagManager] Failed to write to IndexedDB:', err);
+    }
+}
 
 export class TagManager {
     constructor() {
@@ -83,56 +164,70 @@ export class TagManager {
 
         this.isLoading = true;
         this.error = null;
-        this._reportProgress('Fetching tag bundle...', 10, onProgress);
-        await yieldToMain();
 
         try {
-            const response = await fetch('/static/data/tags_bundle.msgpack', {
-                headers: { 'Accept': 'application/msgpack' }
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            this._reportProgress('Unpacking tag bundle...', 50, onProgress);
+            // 1. Try loading from IndexedDB
+            this._reportProgress('Checking local cache...', 5, onProgress);
             await yieldToMain();
 
-            const buffer = await response.arrayBuffer();
-            const rawBundle = /** @type {Record<string, RawTagBundleEntry>} */ (decode(buffer)) || {};
+            let parsedMap = await getCachedTagMap();
 
-            this._reportProgress('Processing tag graph...', 75, onProgress);
-            await yieldToMain();
+            if (parsedMap) {
+                console.log('[TagManager] Loaded tag metadata from IndexedDB cache hit.');
+                this._reportProgress('Loaded from cache', 80, onProgress);
+                await yieldToMain();
+            } else {
+                // 2. Cache miss -> Fetch and decode MsgPack
+                console.log('[TagManager] Cache miss or stale; fetching fresh bundle...');
+                this._reportProgress('Fetching tag bundle...', 10, onProgress);
+                await yieldToMain();
 
-            /** @type {TagInfoMap} */
-            const parsedMap = {};
+                const response = await fetch('/static/data/tags_bundle.msgpack', {
+                    headers: { 'Accept': 'application/msgpack' }
+                });
 
-            for (const [tag, entry] of Object.entries(rawBundle)) {
-                /** @type {TagInfo} */
-                const info = {
-                    category: CATEGORY_MAP[entry.category] || 'GENERAL',
-                    tag_count: entry.count ?? 0
-                };
-
-                if (entry.implies && entry.implies.length > 0) {
-                    info.implies = entry.implies;
-                }
-                if (entry.implied_by && entry.implied_by.length > 0) {
-                    info.implied_by = entry.implied_by;
-                }
-                if (entry.alias_to) {
-                    info.alias_to = entry.alias_to;
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
 
-                parsedMap[tag] = info;
+                this._reportProgress('Unpacking tag bundle...', 40, onProgress);
+                await yieldToMain();
+
+                const buffer = await response.arrayBuffer();
+                const rawBundle = /** @type {Record<string, RawTagBundleEntry>} */ (decode(buffer)) || {};
+
+                this._reportProgress('Processing tag graph...', 60, onProgress);
+                await yieldToMain();
+
+                parsedMap = {};
+
+                for (const [tag, entry] of Object.entries(rawBundle)) {
+                    /** @type {TagInfo} */
+                    const info = {
+                        category: CATEGORY_MAP[entry.category] || 'GENERAL',
+                        tag_count: entry.count ?? 0,
+                        implies: entry.implies ?? [],
+                        implied_by: entry.implied_by ?? [],
+                        alias_to: entry.alias_to ?? undefined
+                    };
+
+                    // if (entry.alias_to) info.alias_to = entry.alias_to;
+
+                    parsedMap[tag] = info;
+                }
+
+                // 3. Save processed map back to IndexedDB asynchronously
+                this._reportProgress('Caching tag data locally...', 80, onProgress);
+                await yieldToMain();
+                await setCachedTagMap(parsedMap);
             }
 
             this.tagInfoMap = parsedMap;
 
+            // 4. Build sorted key array for fast binary-search prefix matching
             this._reportProgress('Building search index...', 90, onProgress);
             await yieldToMain();
 
-            // Build sorted key array for fast binary-search prefix matching
             this.searchKeys = Object.keys(parsedMap).sort();
 
             this._reportProgress('Tag data ready', 100, onProgress);
@@ -143,7 +238,7 @@ export class TagManager {
             // @ts-expect-error
             this.error = err.message || 'Failed to load tag data';
             showToast('Failed to load tag metadata.', 'error');
-            throw err; // Re-throw so app.js catch block catches it
+            throw err;
         } finally {
             this.isLoading = false;
         }
