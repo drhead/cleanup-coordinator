@@ -73,17 +73,19 @@
                             <a :href="`https://e621.net/posts/${item.post_id}`" target="_blank"
                                class="text-xs font-mono font-bold text-blue-400 hover:underline"
                                x-text="`Post #${item.post_id}`"></a>
-                            <span class="text-[11px] text-gray-500 font-mono"
-                                  x-text="`${item.image_width || '?'}×${item.image_height || '?'}`"></span>
+                            <span class="font-mono text-[11px]"
+                                    :class="image.isUniform([currentPair.a, currentPair.b], item) ? 'text-gray-600' : 'text-gray-400'"
+                                    x-text="image.formatSpecs(item)">
+                            </span>
                         </div>
 
                         <!-- Clickable Image Container -->
-                        <div class="relative w-full h-[70vh] flex items-center justify-center bg-black/60 rounded-md overflow-hidden select-none cursor-pointer group border border-gray-800/60"
+                        <div class="relative w-full h-[60vh] flex items-center justify-center bg-black/60 rounded-md overflow-hidden select-none cursor-pointer group border border-gray-800/60"
                              @click="openModal(item)">
 
-                            <div class="relative max-h-full max-w-full flex items-center justify-center">
+                            <div class="relative max-w-full flex items-center justify-center">
                                 <img :src="item.fileUrl" 
-                                     class="max-h-[70vh] max-w-full object-contain block"
+                                     class="max-h-[60vh] max-w-full object-contain block"
                                      @mousemove="handleMouseMove($event, $el)"
                                      @mouseenter="isHovering = true"
                                      @mouseleave="handleMouseLeave()">
@@ -109,10 +111,11 @@
                 <div class="w-full flex items-center justify-between mb-2">
                     <div class="flex items-center gap-3">
                         <span class="text-xs font-mono font-bold text-blue-400"
-                              x-text="`#${currentPair.a.post_id} (${currentPair.a.image_width || '?'}×${currentPair.a.image_height || '?'})`"></span>
+                              x-text="`#${currentPair.a.post_id} (${currentPair.a.image_width}×${currentPair.a.image_height})`"></span>
                         <span class="text-xs text-gray-500 font-bold">vs</span>
                         <span class="text-xs font-mono font-bold text-blue-400"
-                              x-text="`#${currentPair.b.post_id} (${currentPair.b.image_width || '?'}×${currentPair.b.image_height || '?'})`"></span>
+                              x-text="`#${currentPair.b.post_id} (${currentPair.b.image_width}×${currentPair.b.image_height})`"></span>
+                              
                     </div>
                     
                     <!-- Live Status Badges -->
@@ -127,17 +130,17 @@
                     </div>
                 </div>
 
-                <div class="relative w-full h-[70vh] flex items-center justify-center bg-black/60 rounded-md overflow-hidden select-none cursor-pointer group border border-gray-800/60"
+                <div class="relative w-full h-[60vh] flex items-center justify-center bg-black/60 rounded-md overflow-hidden select-none cursor-pointer group border border-gray-800/60"
                      @click="openModal()">
 
                     <!-- SWIPE MODE -->
                     <div x-show="mode === 'swipe'" 
-                         class="relative max-h-full max-w-full flex items-center justify-center cursor-ew-resize"
+                         class="relative max-w-full flex items-center justify-center cursor-ew-resize"
                          @mousemove="handleSwipeMove($event, $el); handleMouseMove($event, $el)"
                          @mouseenter="isHovering = true"
                          @mouseleave="handleMouseLeave()">
                         
-                        <img :src="currentPair.a.fileUrl" class="max-h-[70vh] max-w-full object-contain block pointer-events-none">
+                        <img :src="currentPair.a.fileUrl" class="max-h-[60vh] max-w-full object-contain block pointer-events-none">
 
                         <img :src="currentPair.b.fileUrl" 
                              class="absolute inset-0 w-full h-full object-contain block pointer-events-none"
@@ -165,12 +168,12 @@
 
                     <!-- DIFF MODE -->
                     <div x-show="mode === 'diff'" 
-                         class="relative max-h-full max-w-full flex items-center justify-center bg-black"
+                         class="relative max-w-full flex items-center justify-center bg-black"
                          @mousemove="handleMouseMove($event, $el)"
                          @mouseenter="isHovering = true"
                          @mouseleave="handleMouseLeave()">
                         
-                        <img :src="currentPair.a.fileUrl" class="max-h-[70vh] max-w-full object-contain block">
+                        <img :src="currentPair.a.fileUrl" class="max-h-[60vh] max-w-full object-contain block">
 
                         <img :src="currentPair.b.fileUrl" 
                              class="absolute inset-0 w-full h-full object-contain block"
@@ -190,13 +193,13 @@
 
                     <!-- BLINK MODE -->
                     <div x-show="mode === 'blink'" 
-                         class="relative max-h-full max-w-full flex items-center justify-center"
+                         class="relative max-w-full flex items-center justify-center"
                          @mousemove="handleMouseMove($event, $el)"
                          @mouseenter="isHovering = true"
                          @mouseleave="handleMouseLeave()">
                         
                         <img :src="(blinkShowB ? currentPair.b : currentPair.a).fileUrl" 
-                             class="max-h-[70vh] max-w-full object-contain block">
+                             class="max-h-[60vh] max-w-full object-contain block">
 
                         <load src="/templates/components/expand-image-button.html" />
 
@@ -213,39 +216,80 @@
                 </div>
             </div>
 
-            <!-- UNIFIED ACTION & NAVIGATION BAR (Directly below Image Display) -->
-            <div class="bg-gray-900/90 border border-gray-800/80 rounded-lg p-3 flex flex-col md:flex-row items-center justify-between gap-3 shadow-sm">
+            <!-- UNIFIED ACTION & NAVIGATION BAR -->
+            <div x-data="{ showSuperiorPrompt: false }" 
+                class="bg-gray-900/90 border border-gray-800/80 rounded-lg p-3 shadow-sm relative min-h-[52px] flex items-center">
                 
-                <!-- Status/Pair Info -->
-                <div class="text-xs text-gray-400 font-mono w-full md:w-1/4 text-left">
-                    <span>Comparing Pair</span>
+                <!-- STAGE 1: Default Classification View -->
+                <div x-show="!showSuperiorPrompt" 
+                    class="grid grid-cols-3 items-center w-full">
+                    
+                    <!-- Left Column: Empty placeholder to keep center text centered -->
+                    <div></div>
+
+                    <!-- Center Column: Instruction Text -->
+                    <div class="text-sm text-gray-200 font-medium text-center whitespace-nowrap">
+                        <span>
+                            Classify relation between 
+                            <span class="font-mono font-bold text-blue-400" x-text="`#${currentPair.a.post_id}`"></span> 
+                            and 
+                            <span class="font-mono font-bold text-blue-400" x-text="`#${currentPair.b.post_id}`"></span>
+                        </span>
+                    </div>
+
+                    <!-- Right Column: Action Buttons -->
+                    <div class="flex items-center justify-end gap-2">
+                        <button @click="showSuperiorPrompt = true"
+                                class="text-xs px-3 py-1.5 rounded-md font-semibold transition bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 border border-amber-800/80 active:scale-95 shadow-sm whitespace-nowrap">
+                            Duplicate / Inferior
+                        </button>
+
+                        <button @click="setRelationship('variant', $data)"
+                                class="text-xs px-3 py-1.5 rounded-md font-semibold transition bg-purple-950/60 hover:bg-purple-900/80 text-purple-300 border border-purple-800/80 active:scale-95 shadow-sm whitespace-nowrap">
+                            Variants
+                        </button>
+
+                        <button @click="setRelationship('unrelated', $data)"
+                                class="text-xs px-3 py-1.5 rounded-md font-semibold transition bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 active:scale-95 shadow-sm whitespace-nowrap">
+                            Unrelated
+                        </button>
+                    </div>
                 </div>
 
-                <!-- Centered Instruction Text -->
-                <div class="text-xs text-gray-200 font-medium text-center flex-1">
-                    Classify relation between 
-                    <span class="font-mono font-bold text-blue-400" x-text="`#${currentPair.a.post_id}`"></span> 
-                    and 
-                    <span class="font-mono font-bold text-blue-400" x-text="`#${currentPair.b.post_id}`"></span>:
+                <!-- STAGE 2: Superiority Selection View -->
+                <div x-show="showSuperiorPrompt" 
+                    x-cloak
+                    class="grid grid-cols-2 items-center w-full relative">
+                    
+                    <!-- Center Text: Absolutely centered on top of everything -->
+                    <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <span class="text-sm text-amber-400 font-semibold">Select the superior post</span>
+                    </div>
+
+                    <!-- Left Half: Button centered under Left Image (25%) -->
+                    <div class="flex justify-center">
+                        <button @click="setRelationship('duplicate', $data, currentPair.a.post_id); showSuperiorPrompt = false"
+                                class="w-48 text-xs px-3 py-1.5 rounded-md font-semibold transition bg-amber-600 hover:bg-amber-500 text-white border border-amber-400 active:scale-95 shadow-md truncate">
+                            <span x-text="`#${currentPair.a.post_id}`"></span>
+                        </button>
+                    </div>
+
+                    <!-- Right Half: Button centered under Right Image (75%) -->
+                    <div class="flex justify-center">
+                        <button @click="setRelationship('duplicate', $data, currentPair.b.post_id); showSuperiorPrompt = false"
+                                class="w-48 text-xs px-3 py-1.5 rounded-md font-semibold transition bg-amber-600 hover:bg-amber-500 text-white border border-amber-400 active:scale-95 shadow-md truncate">
+                            <span x-text="`#${currentPair.b.post_id}`"></span>
+                        </button>
+                    </div>
+
+                    <!-- Absolute Cancel Button on Far Right (Does not steal width from grid!) -->
+                    <button @click="showSuperiorPrompt = false" 
+                            title="Cancel selection"
+                            class="absolute right-0 text-xs px-2.5 py-1.5 rounded-md text-gray-400 hover:text-white hover:bg-gray-800 transition">
+                        ✕
+                    </button>
                 </div>
 
-                <!-- Relationship Action Buttons -->
-                <div class="flex items-center gap-2 justify-end w-full md:w-auto">
-                    <button @click="setRelationship('duplicate', $data)"
-                            class="text-xs px-3 py-1.5 rounded-md font-semibold transition bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 border border-amber-800/80 active:scale-95 shadow-sm">
-                        Duplicate / Inferior
-                    </button>
-
-                    <button @click="setRelationship('variant', $data)"
-                            class="text-xs px-3 py-1.5 rounded-md font-semibold transition bg-purple-950/60 hover:bg-purple-900/80 text-purple-300 border border-purple-800/80 active:scale-95 shadow-sm">
-                        Variants
-                    </button>
-
-                    <button @click="setRelationship('unrelated', $data)"
-                            class="text-xs px-3 py-1.5 rounded-md font-semibold transition bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 active:scale-95 shadow-sm">
-                        Unrelated
-                    </button>
-                </div>
             </div>
 
         </div>

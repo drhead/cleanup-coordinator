@@ -62,6 +62,7 @@ declare global {
     fileUrl?: string;
     description?: string;
     sources?: string[];
+    locked_tags?: string[];
     _tagsSignature?: string;
     _sortedTags?: Array<TagObj>;
   }
@@ -150,7 +151,7 @@ declare global {
      * Collapses a duplicate graph down to a single canonical post ID
      * and updates any variant graphs referencing those duplicate posts.
      */
-    resolveDuplicateGraph(graph: ResolutionGraph, id: number): void;
+    resolveDuplicateGraph(graph: ResolutionGraph): void;
 
     /** Helper to construct a standard pairwise string key "minId:maxId" */
     _getRelationKey(a: number, b: number): string;
@@ -159,7 +160,7 @@ declare global {
     markUnknown(id: number): void;
 
     /** Signals a relation of a specific type between two post IDs */
-    addGraphEdge(type: GraphType, a: number, b: number): void;
+    addGraphEdge(type: GraphType, a: number, b: number, superiorId: number | null): void;
 
     /**
      * Recalculates transitive connections (duplicates/variants) and replicates

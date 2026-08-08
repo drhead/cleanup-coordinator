@@ -1,6 +1,7 @@
 // @ts-check
 
 import Alpine from 'alpinejs';
+import { alpineHelpers } from './alpine_helpers.js';
 
 // Import pure formatting/helper functions if needed directly in templates
 import {
@@ -29,6 +30,7 @@ document.addEventListener('alpine:init', () => {
         showInstructionsModal: false,
         isAgeVerified: !!localStorage.getItem('e621_age_verified'),
 
+        ...alpineHelpers,
         // Expose pure display helpers to template if accessed as methods
         getBatchStatusLabel,
         getBatchStatusClass,

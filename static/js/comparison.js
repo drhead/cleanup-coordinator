@@ -322,15 +322,16 @@ export function ComparisonManager(resMgr) {
          * Applies chosen relationship type to current pair and advances.
          * @param {'duplicate' | 'variant' | 'unrelated'} type
          * @param {RootData | null} [rootData]
+         * @param {number | null} [superiorId]
          */
-        setRelationship(type, rootData) {
+        setRelationship(type, rootData, superiorId = null) {
             if (!this.currentPair) return;
 
             const idA = this.currentPair.a.post_id;
             const idB = this.currentPair.b.post_id;
 
-            // 1. Record relationship in ResolutionManager graph
-            this.resolutionManager.addGraphEdge(type, idA, idB);
+            // 1. Record relationship and head in ResolutionManager graph
+            this.resolutionManager.addGraphEdge(type, idA, idB, superiorId);
 
             // 2. Obtain next pair needed to map relationships
             const nextPairIds = this.resolutionManager.getNextPair();

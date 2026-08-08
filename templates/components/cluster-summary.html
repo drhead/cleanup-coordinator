@@ -73,19 +73,22 @@
 
                                     <!-- 2. Image Viewport (Compact max-height) -->
                                     <div class="w-full h-40 bg-black flex items-center justify-center p-1 overflow-hidden">
-                                        <template x-if="post.original.fileUrl || post.original.file_url">
-                                            <img :src="post.original.fileUrl || post.original.file_url" 
+                                        <template x-if="post.original.fileUrl">
+                                            <img :src="post.original.fileUrl" 
                                                  :alt="`Post #${postId}`" 
                                                  class="max-h-full max-w-full object-contain" />
                                         </template>
-                                        <template x-if="!post.original.fileUrl && !post.original.file_url">
+                                        <template x-if="!post.original.fileUrl">
                                             <span class="text-gray-600 text-xs font-mono text-center">No Image</span>
                                         </template>
                                     </div>
 
-                                    <!-- 3. Image Info Placeholder Bar -->
+                                    <!-- 3. Image Info Bar -->
                                     <div class="bg-gray-900 border-t border-gray-800 px-2 py-1 text-[10px] text-gray-500 text-center font-mono">
-                                        <span>Image Info Placeholder</span>
+                                        <span class="font-mono text-[10px]"
+                                            :class="image.isUniform(graph.posts, post.original) ? 'text-gray-600' : 'text-gray-400'"
+                                            x-text="image.formatSpecs(post.original)">
+                                        </span>
                                     </div>
 
                                     <!-- 4. Status Badge (Non-interactive Pure Status Indicators) -->

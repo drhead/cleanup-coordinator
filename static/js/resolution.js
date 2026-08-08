@@ -10,6 +10,7 @@ import './summary.js'
  * @typedef {Object} ResolutionGraph
  * @property {GraphType} type
  * @property {Set<number>} posts
+ * @property {number} [head]
  */
 
 /**
@@ -102,16 +103,19 @@ document.addEventListener('alpine:init', () => {
          * Collapses a duplicate graph down to a single canonical post ID
          * and updates any variant graphs referencing those duplicate posts.
          * @param {ResolutionGraph} graph
-         * @param {number} id
          * @returns {void}
          */
-        resolveDuplicateGraph(graph, id) {
+        resolveDuplicateGraph(graph) {
             if (graph.type !== 'duplicate') {
                 throw new Error(`Cannot resolve graph: Expected type 'duplicate', got '${graph.type}'`);
             }
 
-            if (!graph.posts.has(id)) {
-                throw new Error(`Cannot resolve duplicate graph: Post ID ${id} is not present in graph.`);
+            if (!graph.head) {
+                throw new Error(`Cannot resolve duplicate graph: No head set.`);
+            }
+
+            if (!graph.posts.has(graph.head)) {
+                throw new Error(`Cannot resolve duplicate graph: Head '${graph.head}' not present in graph.`);
             }
 
             // For all 'variant' graphs containing any of graph.posts:
@@ -128,7 +132,7 @@ document.addEventListener('alpine:init', () => {
                     }
 
                     if (matched) {
-                        vGraph.posts.add(id);
+                        vGraph.posts.add(graph.head);
                     }
                 }
             }
@@ -162,9 +166,10 @@ document.addEventListener('alpine:init', () => {
          * @param {GraphType} type
          * @param {number} a
          * @param {number} b
+         * @param {number | null} [superiorId]
          * @returns {void}
          */
-        addGraphEdge(type, a, b) {
+        addGraphEdge(type, a, b, superiorId = null) {
             if (type === 'unrelated') {
                 // Check if ANY graph contains A or B
                 if (!this.graphs.some(g => g.posts.has(a))) {
@@ -189,25 +194,38 @@ document.addEventListener('alpine:init', () => {
                     return true;
                 });
 
-                // Find existing graphs of target $type containing A or B
                 const graphA = this.graphs.find(g => g.type === type && g.posts.has(a));
                 const graphB = this.graphs.find(g => g.type === type && g.posts.has(b));
 
                 // Case 1: Neither A nor B exist in a $type graph -> Create new graph with both
                 if (!graphA && !graphB) {
-                    this.graphs.push({ type, posts: new Set([a, b]) });
+                    /** @type {ResolutionGraph} */
+                    const newGraph = { type, posts: new Set([a, b]) };
+                    if (type === 'duplicate' && superiorId) {
+                        newGraph.head = superiorId;
+                    }
+                    this.graphs.push(newGraph);
                 }
-                // Case 2: Exactly one exists -> Add missing node to it
+                // Case 2: Exactly one exists -> Add missing node & update head if superior
                 else if (graphA && !graphB) {
                     graphA.posts.add(b);
+                    if (type === 'duplicate' && superiorId) {
+                        graphA.head = superiorId;
+                    }
                 }
                 else if (!graphA && graphB) {
                     graphB.posts.add(a);
+                    if (type === 'duplicate' && superiorId) {
+                        graphB.head = superiorId;
+                    }
                 }
                 // Case 3: Both exist in separate $type graphs -> Merge graphB into graphA
                 else if (graphA && graphB && graphA !== graphB) {
                     for (const postId of graphB.posts) {
                         graphA.posts.add(postId);
+                    }
+                    if (type === 'duplicate' && superiorId) {
+                        graphA.head = superiorId;
                     }
                     // Remove the merged graphB from graphs list
                     this.graphs = this.graphs.filter(g => g !== graphB);
@@ -332,6 +350,11 @@ document.addEventListener('alpine:init', () => {
             }
 
             const unrelatedOrUnknown = new Set([...unknowns, ...unrelateds]);
+            /** @param {number} id */
+            const getHeadIfDuplicate = (id) => {
+                const dupGraph = this.graphs.find(g => g.type === 'duplicate' && g.posts.has(id));
+                return dupGraph?.head ?? id;
+            };
 
             /**
              * Check if pair (a, b) already has an established relation in stored relations
@@ -353,7 +376,7 @@ document.addEventListener('alpine:init', () => {
                     const a = phase1Posts[i];
                     const b = phase1Posts[j];
                     if (!hasRelation(a, b)) {
-                        return [a, b];
+                        return [getHeadIfDuplicate(a), getHeadIfDuplicate(b)];
                     }
                 }
             }
@@ -365,7 +388,7 @@ document.addEventListener('alpine:init', () => {
                     const a = phase2Posts[i];
                     const b = phase2Posts[j];
                     if (!hasRelation(a, b)) {
-                        return [a, b];
+                        return [getHeadIfDuplicate(a), getHeadIfDuplicate(b)];
                     }
                 }
             }

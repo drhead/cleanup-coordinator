@@ -5,6 +5,7 @@ import Alpine from 'alpinejs';
 import { showToast } from './toasts.js';
 import { tagManager } from './tags.js';
 import { ResolutionPost } from './resolution.js';
+import { alpineHelpers } from './alpine_helpers.js';
 
 /**
  * @typedef {Object} RootData
@@ -131,7 +132,7 @@ export function ReconciliationManager(manager) {
         },
 
         /**
-         * Get remaining post IDs in current graph excluding the kept post.
+         * Get remaining post IDs in current graph excluding the kept superior post.
          * @returns {number[]}
          */
         get rhsPostIds() {
@@ -162,7 +163,6 @@ export function ReconciliationManager(manager) {
          * @returns {string}
          */
         get nextButtonLabel() {
-            if (!this.selectedSuperiorId) return 'Next Graph';
             if (this.activeRhsIndex < this.rhsPostIds.length - 1) {
                 return 'Next Post';
             }
@@ -326,38 +326,32 @@ export function ReconciliationManager(manager) {
             this.setupCurrentGraph();
         },
 
+        /**
+         * Automatically binds superior post from graph.head and prepares graph state.
+         */
         setupCurrentGraph() {
             if (!this.currentGraph) return;
 
-            this.selectedSuperiorId = null;
+            // Retrieve superior post from graph head (defaulting to first post if head isn't set)
+            const superiorId = this.currentGraph.head || Array.from(this.currentGraph.posts)[0];
+
+            this.selectedSuperiorId = superiorId;
+            this.lhsPostId = superiorId;
             this.selectedParentId = null;
             this.customParentId = '';
-            this.lhsPostId = null;
             this.activeRhsIndex = 0;
             this.isSummary = false;
-        },
 
-        /**
-         * Selects the superior (kept) post for the active duplicate graph.
-         * Flags all other posts in the graph (ResolutionPost.flag = true).
-         * @param {number} postId
-         */
-        selectSuperior(postId) {
-            if (!postId || !this.currentGraph) return;
-
-            this.selectedSuperiorId = postId;
-            this.lhsPostId = postId;
-            this.activeRhsIndex = 0;
-
-            // Set ResolutionPost.flag = true on all other posts in the duplicate graph
+            // Automatically mark non-head posts for deletion/flagging
             for (const pId of this.currentGraph.posts) {
                 const resPost = this.resolutionManager.getPost(pId);
                 if (resPost) {
-                    resPost.flag = (pId !== postId);
+                    resPost.flag = (pId !== superiorId);
                 }
             }
 
-            this.resolutionManager.resolveDuplicateGraph(this.currentGraph, postId);
+            // Collapse graph and update referencing variant graphs
+            this.resolutionManager.resolveDuplicateGraph(this.currentGraph);
         },
 
         /**
@@ -385,12 +379,27 @@ export function ReconciliationManager(manager) {
             if (!resPost) return;
 
             const tagName = typeof tagObj === 'string' ? tagObj : tagObj.name;
+
+            if (alpineHelpers.tagpill.isTagLocked(tagName, resPost.original)) {
+                console.warn(`Cannot remove tag '${tagName}' because it is locked.`);
+                return;
+            }
+
             const chain = this.getImplicationChain(this.lhsPostId, tagName, resPost.tags);
 
             const toRemove = new Set([tagName]);
             if (chain) {
                 chain.directImplicators?.forEach(t => toRemove.add(t));
                 chain.indirectImplicators?.forEach(t => toRemove.add(t));
+            }
+
+            const hasLockedImplication = Array.from(toRemove).some(t => 
+                alpineHelpers.tagpill.isTagLocked(t, resPost.original)
+            );
+
+            if (hasLockedImplication) {
+                console.warn(`Cannot remove tag '${tagName}' because its deletion would cascade to a locked tag.`);
+                return;
             }
 
             resPost.tags = resPost.tags.filter(t => !toRemove.has(t));
@@ -414,7 +423,7 @@ export function ReconciliationManager(manager) {
             } else if (this.activeGraphIndex < this.duplicateGraphs.length - 1) {
                 this.selectGraph(this.activeGraphIndex + 1);
             } else {
-                this.proceedToSummary(rootData)
+                this.proceedToSummary(rootData);
             }
         },
 
@@ -426,6 +435,7 @@ export function ReconciliationManager(manager) {
                 globalActiveReconciliation = null;
             }
         },
+
         /**
          * @param {RootData | null} [rootData]
          */

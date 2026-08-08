@@ -31,17 +31,10 @@
         <!-- Right Details: Dimensions, Quality, Deleted/Flagged Status -->
         <div class="flex items-center space-x-2">
             <!-- Dimensions & Format Info Label -->
-            <template x-if="post.image_width && post.image_height">
-                <span class="font-mono text-[11px]"
-                      :class="cluster.posts.every(p => 
-                          p.image_width === post.image_width && 
-                          p.image_height === post.image_height && 
-                          p.image_format === post.image_format && 
-                          p.image_quality === post.image_quality
-                      ) ? 'text-gray-600' : 'text-gray-400'"
-                      x-text="`${post.image_width}x${post.image_height} ${post.image_format || ''}${post.image_quality !== null && post.image_quality !== undefined ? ': ' + (post.image_quality === 101 ? 'Lossless' : post.image_quality) : ''}`">
-                </span>
-            </template>
+            <span class="font-mono text-[11px]"
+                :class="image.isUniform(cluster.posts, post) ? 'text-gray-600' : 'text-gray-400'"
+                x-text="image.formatSpecs(post)">
+            </span>
 
             <!-- Flag Status Indicators -->
             <template x-if="post.is_deleted">
@@ -104,46 +97,13 @@
         <div class="flex flex-wrap gap-x-1 gap-y-1">
             <template x-for="tag in $store.tags.getSortedTags(post.tags, post)" :key="tag.category + ':' + tag.name">
                 <span class="font-mono text-[11px] leading-tight inline-flex items-center px-1 rounded border border-transparent select-none transition-all duration-150 ease-in-out"
-                    :class="{
-                        /* 1. Active Post Hover Highlights */
-                        ...(hoveredImplicationData?.postId === post.post_id ? {
-                            'bg-gray-800! text-white! border-gray-400!':
-                                hoveredImplicationData.tagName === tag.name,
-
-                            'bg-amber-500/30! text-amber-300! border-amber-400!':
-                                hoveredImplicationData.directImplicators.has(tag.name),
-
-                            'bg-amber-500/10! text-amber-400/80! border-dashed! border-amber-500/60!':
-                                hoveredImplicationData.indirectImplicators.has(tag.name),
-
-                            'bg-cyan-500/30! text-cyan-300! border-cyan-400!':
-                                hoveredImplicationData.directImplied.has(tag.name),
-
-                            'bg-cyan-500/10! text-cyan-400/80! border-dashed! border-cyan-500/60!':
-                                hoveredImplicationData.indirectImplied.has(tag.name)
-                        } 
-                        /* 2. Merged tags hover states */
-                        : hoveredMergedData ? {
-                            'opacity-100': 
-                                hoveredMergedData.targetPostId == post.post_id,
-
-                            'opacity-100 brightness-125 font-bold': 
-                                hoveredMergedData.targetPostId != post.post_id && 
-                                hoveredMergedData.tags.has(tag.name),
-
-                            'opacity-30': 
-                                hoveredMergedData.targetPostId != post.post_id && 
-                                !hoveredMergedData.tags.has(tag.name)
-                        } : {})
-                    }"
-                    :style="$store.tags.getTagStyle(tag.category)"
-                    :title="`${tag.name} (${($store.tags.tagInfoMap[tag.name]?.tag_count ?? 0).toLocaleString()} posts)`"
+                    :class="tagpill.getTagClasses(tag, post, 'display', { hoveredImplicationData, hoveredMergedData })"
+                    :style="tagpill.getTagStyle(tag, post, hoveredImplicationData)"
+                    :title="tagpill.getTagTitle(tag.name)"
                     @mouseenter="hoveredImplicationData = $store.tags.getImplicationChain(post.post_id, tag.name, post.tags)"
                     @mouseleave="hoveredImplicationData = null">
                     <span x-text="tag.name"></span>
-                    <span x-show="$store.tags.isImpliedTag(tag.name, post.tags)"
-                        class="text-emerald-400 font-bold text-[9px] ml-0.5 select-none"
-                        title="Implied tag">i</span>
+                    <span x-show="$store.tags.isImpliedTag(tag.name, post.tags)" class="text-emerald-400 font-bold text-[9px] ml-0.5 select-none" title="Implied tag">i</span>
                 </span>
             </template>
         </div>

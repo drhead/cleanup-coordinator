@@ -62,6 +62,7 @@ export function ensureClusterPostsInfo(clusterPosts) {
                     targetPost.fileUrl = apiPost.file?.url || '';
                     targetPost.description = apiPost.description || '';
                     targetPost.sources = Array.isArray(apiPost.sources) ? apiPost.sources : [];
+                    targetPost.locked_tags = Array.isArray(apiPost.locked_tags) ? apiPost.locked_tags : [];
                 }
             }
         });
