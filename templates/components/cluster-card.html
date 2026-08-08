@@ -1,10 +1,10 @@
-<div class="border rounded-lg p-4 transition"
+<div class="border rounded-lg p-4 transition shadow-md"
      x-data="{ 
          activeView: 'none', 
          hoveredImplicationData: null, 
          hoveredMergedData: null 
      }"
-     :class="cluster.is_resolved ? 'bg-gray-950 border-gray-800 opacity-80' : 'bg-gray-900 border-gray-800'">
+     :class="cluster.is_resolved ? 'bg-gray-900/60 border-gray-800/80 opacity-80' : 'bg-gray-900 border-gray-800'">
     
     <!-- Cluster Header Line (Collapsible Trigger) -->
     <div class="flex flex-wrap items-center justify-between gap-2 cursor-pointer select-none"
@@ -16,7 +16,7 @@
             <span class="text-gray-400 hover:text-white transition font-bold text-xs w-4"
                   x-text="cluster.collapsed ? '►' : '▼'"></span>
 
-            <span class="font-mono text-xs text-gray-500 font-bold" x-text="`Cluster #${cluster.cluster_index}`"></span>
+            <span class="font-mono text-xs text-gray-400 font-bold" x-text="`Cluster #${cluster.cluster_index}`"></span>
             
             <!-- Resolution Status Badge -->
             <span class="text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider"
@@ -49,8 +49,8 @@
             <template x-if="$store.auth?.e621User && activeView === 'none'">
                 <div class="flex justify-center gap-3 py-2">
                     <button @click="activeView = 'compare'"
-                            class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded font-semibold transition flex items-center gap-2 shadow-md">
-                        <span>🔍</span>
+                            class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-md font-semibold transition flex items-center gap-2 shadow-md">
+                        <span style="font-variant-emoji: text;">🔍</span>
                         <span>Start Comparison</span>
                     </button>
                 </div>

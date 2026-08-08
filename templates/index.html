@@ -56,14 +56,14 @@
                     <!-- Instructions Modal Trigger -->
                     <button @click="showInstructionsModal = true" 
                             class="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 px-3 py-1.5 rounded-md font-sans font-semibold flex items-center space-x-1.5 transition">
-                        <span>ℹ️</span>
+                        <span style="font-variant-emoji: text;">ℹ️</span>
                         <span>Instructions</span>
                     </button>
 
                     <!-- Blacklist Settings Modal Trigger -->
                     <button @click="showBlacklistModal = true" 
                             class="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 px-3 py-1.5 rounded-md font-sans font-semibold flex items-center space-x-1.5 transition">
-                        <span>🚫</span>
+                        <span style="font-variant-emoji: text;">🚫</span>
                         <span>Blacklist</span>
                     </button>
 
@@ -72,7 +72,7 @@
                         <template x-if="!$store.auth.e621User">
                             <button @click="$store.auth.openLoginModal()"
                                     class="bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 px-3 py-1.5 rounded-md font-sans font-semibold flex items-center space-x-1.5 transition text-xs">
-                                <span>🔑</span>
+                                <span style="font-variant-emoji: text;">🔑</span>
                                 <span>Login</span>
                             </button>
                         </template>

@@ -187,7 +187,7 @@
                                     <template x-if="graph.type === 'unrelated' || isCanonical(graphIdx, postId) || graph.type === 'variant'">
                                         <button @click="applyChanges(postId)" 
                                                 class="w-full md:w-28 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs px-3 py-2 rounded shadow transition flex items-center justify-center gap-1">
-                                            <span>✓</span>
+                                            <span style="font-variant-emoji: text;">✓</span>
                                             <span>Apply</span>
                                         </button>
                                     </template>
@@ -196,7 +196,7 @@
                                     <template x-if="graph.type === 'duplicate' && !isCanonical(graphIdx, postId)">
                                         <button @click="submitFlag(postId)" 
                                                 class="w-full md:w-28 bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs px-3 py-2 rounded shadow transition flex items-center justify-center gap-1">
-                                            <span>🚩</span>
+                                            <span style="font-variant-emoji: text;">🚩</span>
                                             <span>Flag</span>
                                         </button>
                                     </template>
