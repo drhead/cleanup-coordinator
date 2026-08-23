@@ -63,6 +63,14 @@ CREATE TABLE IF NOT EXISTS post_flags (
     is_deletion BOOLEAN NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS post_edits (
+    edit_id BIGINT PRIMARY KEY,
+    post_id BIGINT NOT NULL,
+    reason TEXT,
+    project_name TEXT,
+    updated_at TIMESTAMPTZ NOT NULL
+);
+
 -- =========================================================================
 -- INDEXES
 -- =========================================================================
@@ -71,6 +79,11 @@ CREATE INDEX IF NOT EXISTS idx_batches_project_id ON batches(project_id);
 CREATE INDEX IF NOT EXISTS idx_clusters_batch_id ON clusters(batch_id);
 CREATE INDEX IF NOT EXISTS idx_cluster_posts_post_id ON cluster_posts(post_id);
 CREATE INDEX IF NOT EXISTS idx_post_flags_lookup ON post_flags(post_id, is_resolved, is_deletion);
+
+-- Indexes for post_edits lookups
+CREATE INDEX IF NOT EXISTS idx_post_edits_post_id ON post_edits(post_id);
+CREATE INDEX IF NOT EXISTS idx_post_edits_project_name ON post_edits(project_name);
+CREATE INDEX IF NOT EXISTS idx_post_edits_updated_at ON post_edits(updated_at DESC);
 
 -- GIN Indexes for high-performance array operations on posts
 CREATE INDEX IF NOT EXISTS idx_posts_pools_gin ON posts USING GIN (pool_ids);

@@ -30,3 +30,24 @@ class E621PostFlagItem(msgspec.Struct, kw_only=True):
     post_id: int
     is_resolved: bool
     is_deletion: bool
+
+
+import re
+
+PROJECT_NAME_REGEX = re.compile(r'part of "([^"]+)"(?:\s+project)?', re.IGNORECASE)
+
+
+def extract_project_name_from_reason(reason: str | None) -> str | None:
+    """Extracts the project name from a P.A.C.K. edit reason string if present."""
+    if not reason:
+        return None
+    match = PROJECT_NAME_REGEX.search(reason)
+    return match.group(1).strip() if match else None
+
+
+class E621PostVersionItem(msgspec.Struct, kw_only=True):
+    """Schema matching array elements returned from e621's /post_versions.json endpoint."""
+    id: int
+    post_id: int
+    reason: str | None = None
+    updated_at: str | None = None

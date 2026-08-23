@@ -10,6 +10,7 @@ from app.flag_worker import flag_poller_loop
 from app.post_worker import post_worker_loop
 from app.tags_worker import run_tags_worker
 from app.leases import lease_poller_loop
+from app.edit_worker import edit_poller_loop
 from app.routes import batches, leases, projects, views, static_data
 from app.db import init_db_pool, close_db_pool
 
@@ -21,6 +22,7 @@ async def lifespan(app: FastAPI):
     lease_task = asyncio.create_task(lease_poller_loop())
     tags_task = asyncio.create_task(run_tags_worker())
     posts_task = asyncio.create_task(post_worker_loop())
+    edit_task = asyncio.create_task(edit_poller_loop())
 
     yield
 
@@ -28,12 +30,14 @@ async def lifespan(app: FastAPI):
     lease_task.cancel()
     tags_task.cancel()
     posts_task.cancel()
+    edit_task.cancel()
     try:
         await asyncio.gather(
             poller_task,
             lease_task,
             tags_task,
             posts_task,
+            edit_task,
             return_exceptions=True
         )
     except asyncio.CancelledError:

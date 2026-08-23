@@ -171,3 +171,52 @@ WHERE post_id = ANY(
     (SELECT array_agg(post_id) FROM (SELECT post_id FROM posts LIMIT 320) t)::bigint[]
 );
 COMMIT;
+
+-- =========================================================================
+-- SCENARIO 5: Bulk post_edits ingestion (320 edits) & lookups
+-- =========================================================================
+\echo ''
+\echo '=========================================='
+\echo 'SCENARIO 5: Bulk post_edits ingestion (320 edits)'
+\echo '=========================================='
+
+BEGIN;
+
+CREATE TEMP TABLE _test_edits AS
+WITH synthetic AS (
+    SELECT 
+        COALESCE((SELECT MAX(edit_id) FROM post_edits), 0) + gs AS edit_id,
+        (10000000 + (gs % 100))::bigint AS post_id,
+        'Edited from P.A.C.K. Editor, part of "test_project" project.' AS reason,
+        'test_project' AS project_name,
+        CURRENT_TIMESTAMP AS updated_at
+    FROM generate_series(1, 320) gs
+)
+SELECT * FROM synthetic;
+
+\echo '--- EXPLAIN ANALYZE: Bulk UNNEST upsert (320 post_edits) ---'
+EXPLAIN (ANALYZE, BUFFERS, TIMING)
+INSERT INTO post_edits (edit_id, post_id, reason, project_name, updated_at)
+SELECT * FROM UNNEST(
+    (SELECT array_agg(edit_id) FROM _test_edits)::bigint[],
+    (SELECT array_agg(post_id) FROM _test_edits)::bigint[],
+    (SELECT array_agg(reason) FROM _test_edits)::text[],
+    (SELECT array_agg(project_name) FROM _test_edits)::text[],
+    (SELECT array_agg(updated_at) FROM _test_edits)::timestamptz[]
+)
+ON CONFLICT (edit_id) DO UPDATE SET
+    post_id = EXCLUDED.post_id,
+    reason = EXCLUDED.reason,
+    project_name = EXCLUDED.project_name,
+    updated_at = EXCLUDED.updated_at;
+
+\echo ''
+\echo '--- EXPLAIN ANALYZE: Post edits lookup by post_id ---'
+EXPLAIN (ANALYZE, BUFFERS, TIMING)
+SELECT edit_id, post_id, reason, project_name, updated_at
+FROM post_edits
+WHERE post_id = 10000001
+ORDER BY updated_at DESC;
+
+DROP TABLE _test_edits;
+COMMIT;

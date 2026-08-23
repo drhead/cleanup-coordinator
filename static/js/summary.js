@@ -547,6 +547,11 @@ document.addEventListener('alpine:init', () => {
                     // Update local post.original and mark as applied to eliminate green highlights instantly
                     post.markApplied(response);
 
+                    // Notify coordinator backend of edit submission for out-of-band verification
+                    fetch('/api/v1/edits/notify', { method: 'POST' }).catch(err => {
+                        console.warn('[Summary] Failed to send edit notification:', err);
+                    });
+
                     // Enqueue post for background refresh and silently refresh batch state
                     this.triggerSilentPostRefresh(postId);
 

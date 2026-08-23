@@ -10,6 +10,7 @@ from fastapi import BackgroundTasks, HTTPException, Request, Response, APIRouter
 from app.db import get_db
 from app.leases import clear_expired_leases, get_client_ip
 from app.post_worker import refresh_batch_posts, enqueue_post_ids, wait_for_next_refresh
+from app.edit_worker import notify_edit_activity
 
 router = APIRouter()
 
@@ -29,6 +30,11 @@ class BatchActionResponse(msgspec.Struct, rename="camel", kw_only=True):
 class PostActionResponse(msgspec.Struct, rename="camel", kw_only=True):
     status: str
     post_id: int
+
+
+class SimpleActionResponse(msgspec.Struct, rename="camel", kw_only=True):
+    status: str
+
 
 
 json_encoder = msgspec.json.Encoder()
@@ -224,4 +230,11 @@ async def refresh_single_post(post_id: int) -> Response:
     await wait_for_next_refresh(timeout=10.0)
 
     resp = PostActionResponse(status="success", post_id=post_id)
+    return Response(content=json_encoder.encode(resp), media_type="application/json")
+
+
+@router.post("/api/v1/edits/notify")
+async def notify_post_edit_submission() -> Response:
+    notify_edit_activity()
+    resp = SimpleActionResponse(status="success")
     return Response(content=json_encoder.encode(resp), media_type="application/json")
