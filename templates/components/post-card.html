@@ -1,5 +1,5 @@
-<div class="bg-gray-950/80 border border-gray-800/80 rounded-lg p-3.5 text-xs space-y-3 shadow-sm flex flex-col h-full justify-between"
-     x-data="{
+<div class="bg-gray-900 border border-gray-800/80 rounded-lg overflow-hidden text-xs shadow-md/30 flex flex-col h-full justify-between"
+    x-data="{
          get c() {
              return $data.card || {
                  mode: 'display',
@@ -11,232 +11,236 @@
              };
          }
      }">
-    <div class="space-y-3 flex-1 flex flex-col">
-        <!-- 1. Single Post Header Line -->
-        <template x-if="c.posts && c.posts.length === 1">
-            <div class="flex items-center justify-between" x-data="{ p: c.posts[0] }">
-                <!-- Left Details: Rating, Post ID, Parent ID & Pools -->
-                <div class="flex items-center space-x-2">
-                    <!-- Rating Badge -->
-                    <template x-if="c.effectiveRating || p.rating">
-                        <span class="w-5 h-5 inline-flex items-center justify-center rounded text-[12px] font-bold font-mono transition-colors"
-                              :class="$store.tags.getRatingBadgeClass(c.effectiveRating || p.rating)"
-                              x-text="$store.tags.getRatingLabel(c.effectiveRating || p.rating)"></span>
-                    </template>
 
-                    <!-- Main Post External Link -->
-                    <a :href="`https://e621.net/posts/${p.postId}`" target="_blank"
-                       class="font-mono font-bold text-blue-400 hover:text-blue-300 hover:underline text-sm flex items-center space-x-1">
-                        <span x-text="`#${p.postId}`"></span>
-                        <span class="text-gray-600 text-xs">&nearr;</span>
+    <!-- 1. Header Bar (Single Post Mode) -->
+    <template x-if="c.posts && c.posts.length === 1">
+        <div class="bg-gray-900 px-2.5 py-2.5 border-b border-gray-800/80 flex items-center justify-between shrink-0"
+            x-data="{ p: c.posts[0] }">
+            <!-- Left Details: Rating, Post ID, Parent ID & Pools -->
+            <div class="flex items-center space-x-2">
+                <!-- Rating Badge -->
+                <template x-if="c.effectiveRating || p.rating">
+                    <span
+                        class="w-5 h-5 inline-flex items-center justify-center rounded text-[12px] font-bold font-mono transition-colors"
+                        :class="$store.tags.getRatingBadgeClass(c.effectiveRating || p.rating)"
+                        x-text="$store.tags.getRatingLabel(c.effectiveRating || p.rating)"></span>
+                </template>
+
+                <!-- Main Post External Link -->
+                <a :href="`https://e621.net/posts/${p.postId}`" target="_blank"
+                    class="font-mono font-bold text-blue-400 hover:text-blue-300 hover:underline text-sm flex items-center space-x-1">
+                    <span x-text="`#${p.postId}`"></span>
+                    <span class="text-gray-600 text-xs">&nearr;</span>
+                </a>
+
+                <!-- Parent Badge -->
+                <template x-if="p.parentId">
+                    <a :href="`https://e621.net/posts/${p.parentId}`" target="_blank"
+                        class="bg-gray-900/80 hover:bg-gray-800 text-gray-400 hover:text-gray-200 border border-gray-800 text-xs px-1.5 py-0.5 rounded font-mono transition">
+                        Parent #<span x-text="p.parentId"></span>
                     </a>
+                </template>
 
-                    <!-- Parent Badge -->
-                    <template x-if="p.parentId">
-                        <a :href="`https://e621.net/posts/${p.parentId}`" target="_blank"
-                           class="bg-gray-900/80 hover:bg-gray-800 text-gray-400 hover:text-gray-200 border border-gray-800 text-xs px-1.5 py-0.5 rounded font-mono transition">
-                            Parent #<span x-text="p.parentId"></span>
-                        </a>
-                    </template>
-
-                    <!-- Pools Badges -->
-                    <template x-if="p.poolIds && p.poolIds.length > 0">
-                        <div class="flex items-center space-x-1 font-mono">
-                            <template x-for="poolId in p.poolIds" :key="poolId">
-                                <a :href="`https://e621.net/pools/${poolId}`" target="_blank"
-                                   class="bg-gray-900/80 hover:bg-gray-800 text-blue-400 hover:text-blue-300 border border-gray-800 text-xs px-1.5 py-0.5 rounded transition">
-                                    Pool #<span x-text="poolId"></span>
-                                </a>
-                            </template>
-                        </div>
-                    </template>
-                </div>
-
-                <!-- Right Details: Flag Status, Dimensions Info -->
-                <div class="flex items-center space-x-2">
-                    <!-- Flag Status Indicators -->
-                    <template x-if="p.isDeleted">
-                        <span class="bg-red-950 text-red-400 border border-red-800/50 px-1.5 py-0.5 rounded text-[10px] font-bold">DELETED</span>
-                    </template>
-                    <template x-if="!p.isDeleted && p.isFlagged">
-                        <span class="bg-amber-950 text-amber-400 border border-amber-800/50 px-1.5 py-0.5 rounded text-[10px] font-bold">FLAGGED</span>
-                    </template>
-
-                    <!-- Dimensions & Format Info Label -->
-                    <span class="font-mono text-[11px]"
-                        x-html="image.formatSpecs(p, (typeof cluster !== 'undefined' && cluster?.posts) ? cluster.posts : [p])">
-                    </span>
-                </div>
-            </div>
-        </template>
-
-        <!-- 2. Multi-Post Union Header Line (RHS Union) -->
-        <template x-if="c.posts && c.posts.length > 1">
-            <div class="flex items-center justify-between">
-                <div class="flex flex-wrap items-center gap-3">
-                    <template x-for="p in c.posts" :key="p.postId">
-                        <div class="flex items-center space-x-1.5">
-                            <template x-if="p.rating">
-                                <span class="w-5 h-5 inline-flex items-center justify-center rounded text-[12px] font-bold font-mono transition-colors"
-                                      :class="$store.tags.getRatingBadgeClass(p.rating)"
-                                      x-text="$store.tags.getRatingLabel(p.rating)"></span>
-                            </template>
-                            <a :href="`https://e621.net/posts/${p.postId}`" target="_blank"
-                               class="font-mono font-bold text-blue-400 hover:text-blue-300 hover:underline text-sm flex items-center space-x-0.5">
-                                <span x-text="`#${p.postId}`"></span>
-                                <span class="text-gray-600 text-xs">&nearr;</span>
+                <!-- Pools Badges -->
+                <template x-if="p.poolIds && p.poolIds.length > 0">
+                    <div class="flex items-center space-x-1 font-mono">
+                        <template x-for="poolId in p.poolIds" :key="poolId">
+                            <a :href="`https://e621.net/pools/${poolId}`" target="_blank"
+                                class="bg-gray-900/80 hover:bg-gray-800 text-blue-400 hover:text-blue-300 border border-gray-800 text-xs px-1.5 py-0.5 rounded transition">
+                                Pool #<span x-text="poolId"></span>
                             </a>
-                        </div>
-                    </template>
-                </div>
-
-                <div class="text-[11px] font-mono text-gray-400 font-semibold">
-                    <span x-text="`${(c.sortedTags || []).length} tags from ${c.posts.length} posts`"></span>
-                </div>
-            </div>
-        </template>
-
-        <!-- Post Tags Display / Pillbox Container -->
-        <div class="bg-gray-900/90 p-2.5 rounded-md border border-gray-800/80 space-y-2.5 flex-1 flex flex-col justify-between">
-            <div class="space-y-2.5 flex-1 flex flex-col">
-                <!-- Display Mode Header -->
-                <template x-if="c.mode === 'display'">
-                    <div class="flex items-center space-x-1.5">
-                        <span class="text-gray-500 font-semibold text-[10px] uppercase tracking-wider block">Post Tags</span>
-                        <span class="text-gray-600 font-mono text-[10px] font-medium"
-                            x-text="`(${(c.sortedTags || []).length})`"></span>
-                    </div>
-                </template>
-
-                <!-- Empty Tags Fallback (Display mode only) -->
-                <template x-if="c.mode === 'display' && (!c.sortedTags || c.sortedTags.length === 0)">
-                    <span class="text-gray-500 italic text-[11px] block">No tags available</span>
-                </template>
-                
-                <!-- Categorized Tag Pills Cloud -->
-                <div class="flex flex-wrap gap-x-1 gap-y-1 content-start">
-                    <template x-for="tag in (c.sortedTags || [])" :key="tag.category + ':' + tag.name">
-                        <span class="font-mono text-[11px] leading-tight inline-flex items-center px-1 rounded border border-transparent select-none transition-all duration-150 ease-in-out"
-                            :class="tagpill.getTagClasses(tag, c.getTagPost ? c.getTagPost(tag) : (c.posts ? c.posts[0] : null), c.mode, { 
-                                hoveredImplicationData, 
-                                newTags: c.newTags, 
-                                isLhs: c.isTagOnLhs ? c.isTagOnLhs(tag.name) : false 
-                            })"
-                            :style="tagpill.getTagStyle(tag, c.getTagPost ? c.getTagPost(tag) : (c.posts ? c.posts[0] : null), hoveredImplicationData)"
-                            :title="tagpill.getTagTitle(tag.name, c.posts ? c.posts[0] : null)"
-                            @click="c.onTagClick && c.onTagClick(tag)"
-                            @mouseenter="c.onTagHover && c.onTagHover(tag)"
-                            @mouseleave="hoveredImplicationData = null">
-
-                            <span x-text="tag.name"></span>
-
-                            <!-- Implied Tag Marker -->
-                            <span x-show="c.isImplied && c.isImplied(tag.name)"
-                                class="text-emerald-400 font-bold text-[9px] ml-0.5 select-none"
-                                title="Implied tag">i</span>
-
-                            <!-- Locked Tag Padlock Indicator (LHS mode) -->
-                            <template x-if="c.mode === 'lhs' && tagpill.isTagLocked(tag.name, c.posts ? c.posts[0] : null)">
-                                <svg class="w-2.5 h-2.5 ml-1 text-gray-400/80 inline" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd"
-                                        d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
-                                        clip-rule="evenodd" />
-                                </svg>
-                            </template>
-                        </span>
-                    </template>
-                </div>
-
-                <!-- Removed Tags Section (LHS mode only) -->
-                <template x-if="c.mode === 'lhs' && removedLhsTags && removedLhsTags.length > 0">
-                    <div class="space-y-1 pt-1.5 border-t border-gray-800/60">
-                        <div class="flex flex-wrap gap-x-1 gap-y-1">
-                            <template x-for="tag in getSortedTags(removedLhsTags)" :key="tag.category + ':' + tag.name">
-                                <span @click="addTagWithImplications(tag.name)"
-                                    class="font-mono text-[11px] leading-tight inline-flex items-center px-1.5 py-0.5 rounded bg-gray-950 text-gray-600 line-through border border-gray-800 cursor-pointer hover:text-gray-300 hover:no-underline"
-                                    title="Click to restore">
-                                    <span x-text="tag.name"></span>
-                                </span>
-                            </template>
-                        </div>
-                    </div>
-                </template>
-            </div>
-
-            <!-- Rating Selector & Custom Tag Input Controls (LHS mode only) -->
-            <template x-if="c.mode === 'lhs'">
-                <div class="pt-2.5 border-t border-gray-800/60 flex flex-wrap items-center justify-between gap-3 mt-auto">
-                    <div class="flex items-center gap-2">
-                        <span class="text-[11px] font-semibold text-gray-400">Rating:</span>
-                        <div class="flex bg-gray-950 border border-gray-800 rounded p-0.5 gap-1">
-                            <template x-for="r in ['s', 'q', 'e']" :key="r">
-                                <button @click="activeRating = r"
-                                    class="text-xs w-5 h-5 rounded font-bold uppercase transition cursor-pointer"
-                                    :class="activeRating === r 
-                                            ? ($store.tags.getRatingBadgeClass(r)) 
-                                            : 'text-gray-400 hover:text-white hover:bg-gray-800 border border-transparent'">
-                                    <span x-text="r"></span>
-                                </button>
-                            </template>
-                        </div>
-                        <template x-if="hasRatingConflict">
-                            <span class="text-[10px] font-bold text-red-400 uppercase tracking-wide"
-                                title="Conflict Detected">⚠️ Rating Mismatch</span>
                         </template>
                     </div>
+                </template>
+            </div>
 
-                    <div class="relative flex-1 min-w-50 max-w-xs" x-data="tagAutocomplete()"
-                        @add-tag="addCustomTag()" @click.outside="isOpen = false">
+            <!-- Right Details: Flag Status, Dimensions Info -->
+            <div class="flex items-center space-x-2">
+                <!-- Flag Status Indicators -->
+                <template x-if="p.isDeleted">
+                    <span
+                        class="bg-red-950 text-red-400 border border-red-800/50 px-1.5 py-0.5 rounded text-[10px] font-bold">DELETED</span>
+                </template>
+                <template x-if="!p.isDeleted && p.isFlagged">
+                    <span
+                        class="bg-amber-950 text-amber-400 border border-amber-800/50 px-1.5 py-0.5 rounded text-[10px] font-bold">FLAGGED</span>
+                </template>
 
-                        <div class="flex items-center gap-1.5 w-full">
-                            <input type="text" x-model="tagInput" @input="onInput"
-                                @keydown.enter.prevent="selectCurrentOrAdd()"
-                                @keydown.arrow-down.prevent="navigate(1)"
-                                @keydown.arrow-up.prevent="navigate(-1)"
-                                @keydown.escape.prevent="isOpen = false" placeholder="Add tag..."
-                                class="flex-1 text-xs bg-gray-950 border border-gray-800 rounded px-2 py-1 text-gray-200 focus:outline-none focus:border-blue-500 min-w-0">
+                <!-- Dimensions & Format Info Label -->
+                <span class="font-mono text-[11px]"
+                    x-html="image.formatSpecs(p, (typeof cluster !== 'undefined' && cluster?.posts) ? cluster.posts : [p])">
+                </span>
+            </div>
+        </div>
+    </template>
 
-                            <button type="button" @click="commitTag()"
-                                class="cursor-pointer text-xs px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded font-semibold transition shrink-0">
-                                Add
-                            </button>
-                        </div>
+    <!-- 1. Header Bar (Multi-Post Union Header Line / RHS Union) -->
+    <template x-if="c.posts && c.posts.length > 1">
+        <div class="bg-gray-900 px-2.5 py-2.5 border-b border-gray-800/80 flex items-center justify-between shrink-0">
+            <div class="flex flex-wrap items-center gap-3">
+                <template x-for="p in c.posts" :key="p.postId">
+                    <div class="flex items-center space-x-1.5">
+                        <template x-if="p.rating">
+                            <span
+                                class="w-5 h-5 inline-flex items-center justify-center rounded text-[12px] font-bold font-mono transition-colors"
+                                :class="$store.tags.getRatingBadgeClass(p.rating)"
+                                x-text="$store.tags.getRatingLabel(p.rating)"></span>
+                        </template>
+                        <a :href="`https://e621.net/posts/${p.postId}`" target="_blank"
+                            class="font-mono font-bold text-blue-400 hover:text-blue-300 hover:underline text-sm flex items-center space-x-0.5">
+                            <span x-text="`#${p.postId}`"></span>
+                            <span class="text-gray-600 text-xs">&nearr;</span>
+                        </a>
+                    </div>
+                </template>
+            </div>
 
-                        <div x-show="isOpen && results.length > 0" x-transition
-                            class="absolute bottom-full mb-1 left-0 right-0 min-w-85 z-50 bg-gray-950 border border-gray-800 rounded shadow-2xl max-h-72 overflow-y-auto divide-y divide-gray-900"
-                            style="display: none;">
+            <div class="text-[11px] font-mono text-gray-400 font-semibold">
+                <span x-text="`${(c.sortedTags || []).length} tags from ${c.posts.length} posts`"></span>
+            </div>
+        </div>
+    </template>
 
-                            <template x-for="(item, index) in results"
-                                :key="item.aliasedFrom ? item.aliasedFrom + '->' + item.name : item.name">
-                                <div @click="selectResult(item)" @mouseenter="selectedIndex = index"
-                                    :class="{ 'bg-gray-800': selectedIndex === index }"
-                                    class="flex items-center justify-between px-2.5 py-1.5 text-xs cursor-pointer hover:bg-gray-800 transition-colors gap-3">
+    <!-- 2. Main Content: Tag Cloud Body (Edge-to-Edge) -->
+    <div class="p-2.5 space-y-2.5 flex-1 flex flex-col justify-between bg-gray-950/80">
+        <div class="space-y-2.5 flex-1 flex flex-col">
+            <!-- Display Mode Header -->
+            <template x-if="c.mode === 'display'">
+                <div class="flex items-center space-x-1.5">
+                    <span class="text-gray-500 font-semibold text-[10px] uppercase tracking-wider block">Post
+                        Tags</span>
+                    <span class="text-gray-600 font-mono text-[10px] font-medium"
+                        x-text="`(${(c.sortedTags || []).length})`"></span>
+                </div>
+            </template>
 
-                                    <div class="truncate flex items-center gap-1 min-w-0"
-                                        :title="item.aliasedFrom ? `${item.aliasedFrom} → ${item.name}` : item.name">
+            <!-- Empty Tags Fallback (Display mode only) -->
+            <template x-if="c.mode === 'display' && (!c.sortedTags || c.sortedTags.length === 0)">
+                <span class="text-gray-500 italic text-[11px] block">No tags available</span>
+            </template>
 
-                                        <template x-if="item.aliasedFrom">
-                                            <span class="flex items-center gap-1 truncate shrink-0 max-w-[45%]">
-                                                <span :style="$store.tags.getTagStyle('INVALID')"
-                                                    class="truncate" x-text="item.aliasedFrom"></span>
-                                                <span class="text-gray-500 select-none">→</span>
-                                            </span>
-                                        </template>
+            <!-- Categorized Tag Pills Cloud -->
+            <div class="flex flex-wrap gap-x-1 gap-y-1 content-start">
+                <template x-for="tag in (c.sortedTags || [])" :key="tag.category + ':' + tag.name">
+                    <span
+                        class="font-mono text-[11px] leading-tight inline-flex items-center px-1 rounded border border-transparent select-none transition-all duration-150 ease-in-out"
+                        :class="tagpill.getTagClasses(tag, c.getTagPost ? c.getTagPost(tag) : (c.posts ? c.posts[0] : null), c.mode, { 
+                            hoveredImplicationData, 
+                            newTags: c.newTags, 
+                            isLhs: c.isTagOnLhs ? c.isTagOnLhs(tag.name) : false 
+                        })"
+                        :style="tagpill.getTagStyle(tag, c.getTagPost ? c.getTagPost(tag) : (c.posts ? c.posts[0] : null), hoveredImplicationData)"
+                        :title="tagpill.getTagTitle(tag.name, c.posts ? c.posts[0] : null)"
+                        @click="c.onTagClick && c.onTagClick(tag)" @mouseenter="c.onTagHover && c.onTagHover(tag)"
+                        @mouseleave="hoveredImplicationData = null">
 
-                                        <span :style="$store.tags.getTagStyle(item.category)"
-                                            class="truncate min-w-0" x-text="item.name"></span>
-                                    </div>
+                        <span x-text="tag.name"></span>
 
-                                    <span class="text-gray-400 font-mono text-[11px] shrink-0 pl-1"
-                                        :title="`${item.count.toLocaleString()} posts`">
-                                        (<span x-text="formatCount(item.count)"></span>)
-                                    </span>
-                                </div>
-                            </template>
-                        </div>
+                        <!-- Implied Tag Marker -->
+                        <span x-show="c.isImplied && c.isImplied(tag.name)"
+                            class="text-emerald-400 font-bold text-[9px] ml-0.5 select-none"
+                            title="Implied tag">i</span>
+
+                        <!-- Locked Tag Padlock Indicator (LHS mode) -->
+                        <template x-if="c.mode === 'lhs' && tagpill.isTagLocked(tag.name, c.posts ? c.posts[0] : null)">
+                            <svg class="w-2.5 h-2.5 ml-1 text-gray-400/80 inline" fill="currentColor"
+                                viewBox="0 0 20 20">
+                                <path fill-rule="evenodd"
+                                    d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                        </template>
+                    </span>
+                </template>
+            </div>
+
+            <!-- Removed Tags Section (LHS mode only) -->
+            <template x-if="c.mode === 'lhs' && removedLhsTags && removedLhsTags.length > 0">
+                <div class="space-y-1 pt-1.5 border-t border-gray-800/60">
+                    <div class="flex flex-wrap gap-x-1 gap-y-1">
+                        <template x-for="tag in getSortedTags(removedLhsTags)" :key="tag.category + ':' + tag.name">
+                            <span @click="addTagWithImplications(tag.name)"
+                                class="font-mono text-[11px] leading-tight inline-flex items-center px-1.5 py-0.5 rounded bg-gray-950 text-gray-600 line-through border border-gray-800 cursor-pointer hover:text-gray-300 hover:no-underline"
+                                title="Click to restore">
+                                <span x-text="tag.name"></span>
+                            </span>
+                        </template>
                     </div>
                 </div>
             </template>
         </div>
     </div>
+
+    <!-- 3. Footer Bar: Rating Selector & Custom Tag Input Controls (LHS mode only) -->
+    <template x-if="c.mode === 'lhs'">
+        <div
+            class="bg-gray-900 border-t border-gray-800/80 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
+            <div class="flex items-center gap-2">
+                <span class="text-[11px] font-semibold text-gray-400">Rating:</span>
+                <div class="flex bg-gray-950 border border-gray-800 rounded p-0.5 gap-1">
+                    <template x-for="r in ['s', 'q', 'e']" :key="r">
+                        <button @click="activeRating = r"
+                            class="text-xs w-5 h-5 rounded font-bold uppercase transition cursor-pointer" :class="activeRating === r 
+                                    ? ($store.tags.getRatingBadgeClass(r)) 
+                                    : 'text-gray-400 hover:text-white hover:bg-gray-800 border border-transparent'">
+                            <span x-text="r"></span>
+                        </button>
+                    </template>
+                </div>
+                <template x-if="hasRatingConflict">
+                    <span class="text-[10px] font-bold text-red-400 uppercase tracking-wide"
+                        title="Conflict Detected">⚠️ Rating Mismatch</span>
+                </template>
+            </div>
+
+            <div class="relative flex-1 min-w-50 max-w-xs" x-data="tagAutocomplete()" @add-tag="addCustomTag()"
+                @click.outside="isOpen = false">
+
+                <div class="flex items-center gap-1.5 w-full">
+                    <input type="text" x-model="tagInput" @input="onInput" @keydown.enter.prevent="selectCurrentOrAdd()"
+                        @keydown.arrow-down.prevent="navigate(1)" @keydown.arrow-up.prevent="navigate(-1)"
+                        @keydown.escape.prevent="isOpen = false" placeholder="Add tag..."
+                        class="flex-1 text-xs bg-gray-950 border border-gray-800 rounded px-2 py-1 text-gray-200 focus:outline-none focus:border-blue-500 min-w-0">
+
+                    <button type="button" @click="commitTag()"
+                        class="cursor-pointer text-xs px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded font-semibold transition shrink-0">
+                        Add
+                    </button>
+                </div>
+
+                <div x-show="isOpen && results.length > 0" x-transition
+                    class="absolute bottom-full mb-1 left-0 right-0 min-w-85 z-50 bg-gray-950 border border-gray-800 rounded shadow-2xl max-h-72 overflow-y-auto divide-y divide-gray-900"
+                    style="display: none;">
+
+                    <template x-for="(item, index) in results"
+                        :key="item.aliasedFrom ? item.aliasedFrom + '->' + item.name : item.name">
+                        <div @click="selectResult(item)" @mouseenter="selectedIndex = index"
+                            :class="{ 'bg-gray-800': selectedIndex === index }"
+                            class="flex items-center justify-between px-2.5 py-1.5 text-xs cursor-pointer hover:bg-gray-800 transition-colors gap-3">
+
+                            <div class="truncate flex items-center gap-1 min-w-0"
+                                :title="item.aliasedFrom ? `${item.aliasedFrom} → ${item.name}` : item.name">
+
+                                <template x-if="item.aliasedFrom">
+                                    <span class="flex items-center gap-1 truncate shrink-0 max-w-[45%]">
+                                        <span :style="$store.tags.getTagStyle('INVALID')" class="truncate"
+                                            x-text="item.aliasedFrom"></span>
+                                        <span class="text-gray-500 select-none">→</span>
+                                    </span>
+                                </template>
+
+                                <span :style="$store.tags.getTagStyle(item.category)" class="truncate min-w-0"
+                                    x-text="item.name"></span>
+                            </div>
+
+                            <span class="text-gray-400 font-mono text-[11px] shrink-0 pl-1"
+                                :title="`${item.count.toLocaleString()} posts`">
+                                (<span x-text="formatCount(item.count)"></span>)
+                            </span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </template>
 </div>
