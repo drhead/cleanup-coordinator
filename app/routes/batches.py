@@ -56,9 +56,6 @@ async def claim_batch(batch_id: int, request: Request) -> Response:
             if not batch:
                 raise HTTPException(status_code=404, detail="Batch not found.")
 
-            if batch["status"] == "COMPLETE":
-                raise HTTPException(status_code=400, detail="Batch is already completed.")
-
             project_id = batch["project_id"]
 
             existing_lease = await conn.fetchrow(

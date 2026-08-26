@@ -253,11 +253,72 @@ export function computeClusterTopology(c) {
 }
 
 /**
+ * Evaluates whether a cluster is fully resolved based on flags, parenting, pools, and confirmed edits.
+ * @param {Cluster} c
+ * @returns {boolean}
+ */
+export function isClusterResolved(c) {
+    if (!c) return false;
+    if (c.manualResolution) return true;
+    const posts = c.posts || [];
+    if (posts.length <= 1) return true;
+
+    const activePosts = posts.filter(p => !p.isDeleted && !p.isFlagged);
+    if (activePosts.length <= 1) return true;
+
+    // Helper: checks if two posts share a variant relationship (parent or pool)
+    const areVariants = (pA, pB) => {
+        if (pA.parentId != null && pB.parentId != null && pA.parentId === pB.parentId) return true;
+        if (pA.parentId != null && pA.parentId === pB.postId) return true;
+        if (pB.parentId != null && pB.parentId === pA.postId) return true;
+        const poolsA = Array.isArray(pA.poolIds) ? pA.poolIds : [];
+        const poolsB = Array.isArray(pB.poolIds) ? pB.poolIds : [];
+        if (poolsA.length > 0 && poolsB.length > 0) {
+            if (poolsA.some(id => poolsB.includes(id))) return true;
+        }
+        return false;
+    };
+
+    // Check if all active posts share a single common pool
+    const firstPools = Array.isArray(activePosts[0].poolIds) ? activePosts[0].poolIds : [];
+    if (firstPools.length > 0) {
+        const commonPool = firstPools.find(poolId => activePosts.every(p => Array.isArray(p.poolIds) && p.poolIds.includes(poolId)));
+        if (commonPool !== undefined) return true;
+    }
+
+    // Check if all active posts share a common parent or internal tree root
+    const parentIds = new Set(activePosts.map(p => p.parentId).filter(id => id != null));
+    if (parentIds.size === 1 && activePosts.every(p => p.parentId != null)) return true;
+
+    for (const root of activePosts) {
+        const others = activePosts.filter(p => p.postId !== root.postId);
+        if (others.length > 0 && others.every(p => p.parentId === root.postId)) return true;
+    }
+
+    // Pairwise check: every pair must be either variants (by parent/pool) or confirmed unrelated (both edited)
+    for (let i = 0; i < activePosts.length; i++) {
+        for (let j = i + 1; j < activePosts.length; j++) {
+            const pA = activePosts[i];
+            const pB = activePosts[j];
+            const isVar = areVariants(pA, pB);
+            const bothEdited = Boolean(pA.isEdited && pB.isEdited);
+            // If they are not variants and not both confirmed edited, the pair is unresolved
+            if (!isVar && !bothEdited) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+/**
  * Prepares cluster posts for blacklisting, sorting, and state flags.
  * @param {Cluster} c
  * @param {boolean} [forceReset=false]
  */
 export function processCluster(c, forceReset = false) {
+    c.isResolved = isClusterResolved(c);
     applyBlacklistToCluster(c, getBlacklistEvaluator());
     c.topology = computeClusterTopology(c);
 
@@ -327,12 +388,55 @@ export function getProjectTotalCount(project) {
     return project?.totalClusters || 0;
 }
 
+/**
+ * Fetches batches for a project, processes cluster resolutions, and returns resolution summary counts.
+ * @param {string} projectId
+ * @returns {Promise<{ batches: Batch[], resolvedClusters: number, totalClusters: number }>}
+ */
+export async function fetchAndHydrateProjectBatches(projectId) {
+    try {
+        const res = await fetch(`/api/v1/projects/${projectId}/batches`, {
+            headers: { 'Accept': 'application/msgpack' }
+        });
+        if (!res.ok) return { batches: [], resolvedClusters: 0, totalClusters: 0 };
+        const buf = await res.arrayBuffer();
+        const data = /** @type {{ batches: Batch[] }} */ (decode(buf));
+        const batches = data.batches || [];
+        let resolvedClusters = 0;
+        let totalClusters = 0;
+
+        for (const b of batches) {
+            b.projectId = projectId;
+            if (Array.isArray(b.clusters)) {
+                for (const c of b.clusters) {
+                    processCluster(c);
+                    c.isRefreshing = false;
+                }
+                b.resolvedCount = b.clusters.filter(c => c.isResolved).length;
+                b.totalClusters = b.clusters.length;
+                resolvedClusters += b.resolvedCount;
+                totalClusters += b.totalClusters;
+                if (b.resolvedCount === b.totalClusters && b.totalClusters > 0) {
+                    b.status = 'COMPLETE';
+                }
+            }
+        }
+
+        return { batches, resolvedClusters, totalClusters };
+    } catch (err) {
+        console.error(`[Batches] Error hydrating batches for project ${projectId}:`, err);
+        return { batches: [], resolvedClusters: 0, totalClusters: 0 };
+    }
+}
+
 export class BatchManager {
     constructor() {
         /** @type {Project|null} */
         this.activeProject = null;
         /** @type {Batch[]} */
         this.batches = [];
+        /** @type {Map<string, Batch[]>} */
+        this.cachedProjectBatches = new Map();
         /** @type {Batch|null} */
         this.activeBatch = null;
         /** @type {Lease|null} */
@@ -577,7 +681,7 @@ export class BatchManager {
     selectProject(projects, projectId) {
         const nextProject = (projects || []).find(p => p.projectId === projectId) || null;
         if (this.activeProject?.projectId !== nextProject?.projectId) {
-            this.batches = [];
+            this.batches = this.cachedProjectBatches?.get(projectId) || [];
         }
         this.activeBatch = null;
         this.activeProject = nextProject;
@@ -776,6 +880,16 @@ export class BatchManager {
             // 4. Ensure existing batches not returned in incremental updates still have accurate lease state
             for (const b of this.batches) {
                 syncBatchLeaseState(b);
+                b.resolvedCount = (b.clusters || []).filter(c => c.isResolved).length;
+                b.totalClusters = (b.clusters || []).length;
+                if (b.resolvedCount === b.totalClusters && b.totalClusters > 0) {
+                    b.status = 'COMPLETE';
+                }
+            }
+
+            if (this.activeProject) {
+                this.activeProject.resolvedClusters = this.batches.reduce((acc, b) => acc + (b.resolvedCount || 0), 0);
+                this.activeProject.totalClusters = this.batches.reduce((acc, b) => acc + (b.totalClusters || 0), 0);
             }
 
             // Restore activeBatch reference

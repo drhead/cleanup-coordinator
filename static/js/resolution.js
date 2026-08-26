@@ -358,6 +358,26 @@ document.addEventListener('alpine:init', () => {
                 }
             }
 
+            // 2.5 Identify Confirmed Relations from Edited Posts
+            // If two active posts are both confirmed edited (isEdited = true), their relationship is presumed correct.
+            // If they are not duplicates and not already variants (by parent/pool), they are marked as 'unrelated'.
+            const activePostsForEdits = posts.filter(p => p.isEdited && !p.isDeleted && !p.isFlagged && !duplicateChildIds.has(p.postId));
+            if (activePostsForEdits.length >= 2) {
+                for (let i = 0; i < activePostsForEdits.length; i++) {
+                    for (let j = i + 1; j < activePostsForEdits.length; j++) {
+                        const idA = activePostsForEdits[i].postId;
+                        const idB = activePostsForEdits[j].postId;
+
+                        const isVariant = this.graphs.some(g => g.type === 'variant' && g.posts.has(idA) && g.posts.has(idB));
+                        const isDupe = this.graphs.some(g => g.type === 'duplicate' && g.posts.has(idA) && g.posts.has(idB));
+
+                        if (!isVariant && !isDupe) {
+                            this.addGraphEdge('unrelated', idA, idB);
+                        }
+                    }
+                }
+            }
+
             // 3. Resolve Duplicate References in Variant Subgraphs
             for (const g of [...this.graphs]) {
                 if (g.type === 'duplicate' && g.head) {

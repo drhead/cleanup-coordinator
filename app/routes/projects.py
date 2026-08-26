@@ -50,8 +50,8 @@ class Cluster(msgspec.Struct, rename="camel", kw_only=True):
     cluster_id: int
     cluster_index: int
     note: str | None = None
-    is_resolved: bool
-    manual_resolution: bool
+    is_resolved: bool = False
+    manual_resolution: bool = False
     posts: list[ClusterPost]
 
 
@@ -60,7 +60,7 @@ class Batch(msgspec.Struct, rename="camel", kw_only=True):
     project_id: str
     batch_number: int
     status: str
-    resolved_count: int
+    resolved_count: int = 0
     total_clusters: int
     clusters: list[Cluster]
 
@@ -82,8 +82,7 @@ async def get_projects() -> Response:
             """
             SELECT 
                 p.*,
-                COUNT(c.cluster_id) AS total_clusters,
-                SUM(CASE WHEN c.is_resolved = TRUE THEN 1 ELSE 0 END) AS resolved_clusters
+                COUNT(c.cluster_id) AS total_clusters
             FROM projects p
             LEFT JOIN batches b ON p.project_id = b.project_id
             LEFT JOIN clusters c ON b.batch_id = c.batch_id
@@ -99,7 +98,7 @@ async def get_projects() -> Response:
                 resolve_on_parenting=bool(r["resolve_on_parenting"]),
                 resolve_on_pools=bool(r["resolve_on_pools"]),
                 total_clusters=int(r["total_clusters"] or 0),
-                resolved_clusters=int(r["resolved_clusters"] or 0),
+                resolved_clusters=0,
             )
             for r in rows
         ]
@@ -144,14 +143,14 @@ def compute_etag(
     for r in batches_rows:
         hasher.update(hash(tuple(r)).to_bytes(8, "little", signed=True))
 
-    # Fixed schema where only index 8 (pool_ids) and index 10 (tags) are lists.
+    # Fixed schema where only index 7 (pool_ids) and index 9 (tags) are lists.
     for r in flat_rows:
         row_hash = hash((
-            r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7],
-            tuple(r[8]) if r[8] else (),
-            r[9],
-            tuple(r[10]) if r[10] else (),
-            r[11], r[12], r[13], r[14], r[15], r[16], r[17]
+            r[0], r[1], r[2], r[3], r[4], r[5], r[6],
+            tuple(r[7]) if r[7] else (),
+            r[8],
+            tuple(r[9]) if r[9] else (),
+            r[10], r[11], r[12], r[13], r[14], r[15], r[16]
         ))
         hasher.update(row_hash.to_bytes(8, "little", signed=True))
 
@@ -192,7 +191,7 @@ async def get_project_batches(
         # 2. Fetch clusters and post metadata
         flat_rows = await conn.fetch(
             """
-            SELECT c.batch_id, c.cluster_id, c.cluster_index, c.custom_note AS note, c.is_resolved, 
+            SELECT c.batch_id, c.cluster_id, c.cluster_index, c.custom_note AS note, 
                    c.manual_resolution, cp.post_id, p.parent_id, p.pool_ids, 
                    p.rating, p.tags,
                    p.image_width, p.image_height, p.image_format, p.image_quality,
@@ -218,7 +217,7 @@ async def get_project_batches(
     if_none_match = request.headers.get("if-none-match") or request.headers.get("If-None-Match")
     if if_none_match:
         clean_if_none_match = if_none_match.strip().lstrip("W/")
-        if clean_if_none_match == etag:
+        if clean_if_none_match == etag.strip().lstrip("W/"):
             return Response(
                 status_code=304,
                 headers={
@@ -253,21 +252,17 @@ async def get_project_batches(
         raw_clusters = clusters_by_batch.get(b_id, {})
 
         cluster_list: list[Cluster] = []
-        resolved_count = 0
 
         for c_id, c_data in raw_clusters.items():
             c_info = c_data["info"]
             posts = c_data["posts"]
-
-            if c_info["is_resolved"]:
-                resolved_count += 1
 
             cluster_list.append(
                 Cluster(
                     cluster_id=c_info["cluster_id"],
                     cluster_index=c_info["cluster_index"],
                     note=c_info["note"],
-                    is_resolved=c_info["is_resolved"],
+                    is_resolved=False,
                     manual_resolution=bool(c_info["manual_resolution"]),
                     posts=posts,
                 )
@@ -279,7 +274,7 @@ async def get_project_batches(
                 project_id=b_row["project_id"],
                 batch_number=b_row["batch_number"],
                 status=b_row["status"],
-                resolved_count=resolved_count,
+                resolved_count=0,
                 total_clusters=len(cluster_list),
                 clusters=cluster_list,
             )

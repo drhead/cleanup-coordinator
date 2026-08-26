@@ -6,6 +6,7 @@ import { alpineHelpers } from './alpine_helpers.js';
 // Import pure formatting/helper functions if needed directly in templates
 import {
     batchManager,
+    fetchAndHydrateProjectBatches,
     getBatchStatusLabel,
     getBatchStatusClass,
     getProgressPercent,
@@ -108,7 +109,22 @@ document.addEventListener('alpine:init', () => {
                 if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
                 const data = await res.json();
                 this.projects = data.projects || [];
-                this.updateLoading('Project list loaded.', 15);
+                this.updateLoading('Hydrating project batches & resolutions...', 10);
+
+                const store = /** @type {import('./batches.js').BatchManager} */ (Alpine.store('batches'));
+                const hydrationResults = await Promise.all(
+                    this.projects.map(p => fetchAndHydrateProjectBatches(p.projectId))
+                );
+                hydrationResults.forEach((result, idx) => {
+                    const project = this.projects[idx];
+                    project.resolvedClusters = result.resolvedClusters;
+                    project.totalClusters = result.totalClusters;
+                    if (store && store.cachedProjectBatches) {
+                        store.cachedProjectBatches.set(project.projectId, result.batches);
+                    }
+                });
+
+                this.updateLoading('Project list and counts ready.', 15);
 
                 // 2. Init Tag Manager (15% - 85%)
                 // Maps TagManager's 0-100% internally to 15-85% on the global loading bar

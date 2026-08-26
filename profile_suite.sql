@@ -100,7 +100,7 @@ ORDER BY batch_number ASC;
 \echo ''
 \echo '--- EXPLAIN ANALYZE: Flat cluster+post data query ---'
 EXPLAIN (ANALYZE, BUFFERS, TIMING)
-SELECT c.batch_id, c.cluster_id, c.cluster_index, c.custom_note AS note, c.is_resolved, 
+SELECT c.batch_id, c.cluster_id, c.cluster_index, c.custom_note AS note,
        c.manual_resolution, cp.post_id, p.parent_id, p.pool_ids, 
        p.rating, p.tags,
        p.image_width, p.image_height, p.image_format, p.image_quality,
