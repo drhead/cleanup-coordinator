@@ -30,6 +30,9 @@
                 <a :href="`https://e621.net/posts/${p.postId}`" target="_blank"
                     class="font-mono font-bold text-blue-400 hover:text-blue-300 hover:underline text-sm flex items-center space-x-1">
                     <span x-text="`#${p.postId}`"></span>
+                    <template x-if="p.isEdited">
+                        <span class="text-emerald-400 font-bold" title="Post verified / edited in P.A.C.K." style="font-variant-emoji: text;">✓</span>
+                    </template>
                     <span class="text-gray-600 text-xs">&nearr;</span>
                 </a>
 
@@ -89,6 +92,9 @@
                         <a :href="`https://e621.net/posts/${p.postId}`" target="_blank"
                             class="font-mono font-bold text-blue-400 hover:text-blue-300 hover:underline text-sm flex items-center space-x-0.5">
                             <span x-text="`#${p.postId}`"></span>
+                            <template x-if="p.isEdited">
+                                <span class="text-emerald-400 font-bold text-xs" title="Post verified / edited in P.A.C.K." style="font-variant-emoji: text;">✓</span>
+                            </template>
                             <span class="text-gray-600 text-xs">&nearr;</span>
                         </a>
                     </div>

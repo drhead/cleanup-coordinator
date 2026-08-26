@@ -52,8 +52,12 @@
                                     <div
                                         class="bg-gray-900 px-2 py-1 flex items-center justify-between text-xs border-b border-gray-800">
                                         <a :href="`https://e621.net/posts/${postId}`" target="_blank"
-                                            class="font-mono font-bold text-blue-400 hover:underline"
-                                            x-text="`#${postId}`"></a>
+                                            class="font-mono font-bold text-blue-400 hover:underline flex items-center gap-1">
+                                            <span x-text="`#${postId}`"></span>
+                                            <template x-if="post.original?.isEdited || post.isEdited">
+                                                <span class="text-emerald-400 font-bold text-[11px]" title="Post verified / edited in P.A.C.K." style="font-variant-emoji: text;">✓</span>
+                                            </template>
+                                        </a>
 
                                         <!-- Rating -->
                                         <div class="flex items-center gap-1 font-mono text-[10px]">

@@ -96,8 +96,12 @@
                             <div
                                 class="bg-gray-900 px-2.5 py-1.5 flex items-center justify-between text-xs border-b border-gray-800 select-none shrink-0 rounded-t-[7px]">
                                 <a :href="`https://e621.net/posts/${item.postId}`" target="_blank"
-                                    class="font-mono font-bold text-blue-400 hover:text-blue-300 hover:underline shrink-0"
-                                    x-text="`#${item.postId}`"></a>
+                                    class="font-mono font-bold text-blue-400 hover:text-blue-300 hover:underline shrink-0 flex items-center gap-1">
+                                    <span x-text="`#${item.postId}`"></span>
+                                    <template x-if="item.isEdited">
+                                        <span class="text-emerald-400 font-bold text-xs" title="Post verified / edited in P.A.C.K." style="font-variant-emoji: text;">✓</span>
+                                    </template>
+                                </a>
 
                                 <!-- Centered Artist Tags -->
                                 <div class="flex-1 min-w-0 px-2 text-center truncate text-[11px]"

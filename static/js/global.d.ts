@@ -58,6 +58,7 @@ declare global {
     parentId: number | null;
     isFlagged: boolean;
     isDeleted: boolean;
+    isEdited?: boolean;
     tags: string[];
     imageWidth: number;
     imageHeight: number;

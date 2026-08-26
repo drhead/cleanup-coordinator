@@ -105,7 +105,8 @@ SELECT c.batch_id, c.cluster_id, c.cluster_index, c.custom_note AS note, c.is_re
        p.rating, p.tags,
        p.image_width, p.image_height, p.image_format, p.image_quality,
        COALESCE(fc.active_deletion_count > 0, FALSE) AS is_deleted, 
-       COALESCE(fc.active_flag_count > 0, FALSE) AS is_flagged
+       COALESCE(fc.active_flag_count > 0, FALSE) AS is_flagged,
+       EXISTS(SELECT 1 FROM post_edits pe WHERE pe.post_id = cp.post_id) AS is_edited
 FROM clusters c
 JOIN batches b ON c.batch_id = b.batch_id
 LEFT JOIN cluster_posts cp ON c.cluster_id = cp.cluster_id

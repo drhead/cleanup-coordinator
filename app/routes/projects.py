@@ -39,6 +39,7 @@ class ClusterPost(msgspec.Struct, rename="camel", kw_only=True):
     tags: list[str] = msgspec.field(default_factory=list[str])
     is_flagged: bool = False
     is_deleted: bool = False
+    is_edited: bool = False
     image_width: int | None = None
     image_height: int | None = None
     image_format: str | None = None
@@ -118,6 +119,7 @@ def parse_cluster_post(row: asyncpg.Record) -> ClusterPost:
         tags=row["tags"] or [],
         is_flagged=bool(row["is_flagged"]),
         is_deleted=bool(row["is_deleted"]),
+        is_edited=bool(row["is_edited"]),
         image_width=row["image_width"],
         image_height=row["image_height"],
         image_format=row["image_format"],
@@ -149,7 +151,7 @@ def compute_etag(
             tuple(r[8]) if r[8] else (),
             r[9],
             tuple(r[10]) if r[10] else (),
-            r[11], r[12], r[13], r[14], r[15], r[16]
+            r[11], r[12], r[13], r[14], r[15], r[16], r[17]
         ))
         hasher.update(row_hash.to_bytes(8, "little", signed=True))
 
@@ -195,7 +197,8 @@ async def get_project_batches(
                    p.rating, p.tags,
                    p.image_width, p.image_height, p.image_format, p.image_quality,
                    COALESCE(fc.active_deletion_count > 0, FALSE) AS is_deleted, 
-                   COALESCE(fc.active_flag_count > 0, FALSE) AS is_flagged
+                   COALESCE(fc.active_flag_count > 0, FALSE) AS is_flagged,
+                   EXISTS(SELECT 1 FROM post_edits pe WHERE pe.post_id = cp.post_id) AS is_edited
             FROM batches b
             JOIN clusters c ON b.batch_id = c.batch_id
             LEFT JOIN cluster_posts cp ON c.cluster_id = cp.cluster_id
