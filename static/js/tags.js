@@ -429,6 +429,21 @@ export class TagManager {
     }
 
     /**
+     * Extracts sorted artist tag names for a post or list of tags.
+     * @param {string[]|ClusterPost|null} target
+     * @param {ClusterPost|null} [post=null]
+     * @returns {string[]}
+     */
+    getArtistTags(target, post = null) {
+        if (!target) return [];
+        const flatTags = Array.isArray(target) ? target : target.tags;
+        const postObj = post || (Array.isArray(target) ? null : target);
+        if (!Array.isArray(flatTags)) return [];
+        const sorted = this.getSortedTags(flatTags, postObj);
+        return sorted.filter(t => t.category === 'ARTIST').map(t => t.name);
+    }
+
+    /**
      * Sorts tags within a category using DAG topological depth levels.
      * @param {string[]} tags
      * @returns {string[]}

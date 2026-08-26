@@ -96,9 +96,24 @@
                             <div
                                 class="bg-gray-900 px-2.5 py-1.5 flex items-center justify-between text-xs border-b border-gray-800 select-none shrink-0 rounded-t-[7px]">
                                 <a :href="`https://e621.net/posts/${item.postId}`" target="_blank"
-                                    class="font-mono font-bold text-blue-400 hover:text-blue-300 hover:underline"
+                                    class="font-mono font-bold text-blue-400 hover:text-blue-300 hover:underline shrink-0"
                                     x-text="`#${item.postId}`"></a>
-                                <span class="font-mono text-[11px]"
+
+                                <!-- Centered Artist Tags -->
+                                <div class="flex-1 min-w-0 px-2 text-center truncate text-[11px]"
+                                    :title="getArtistTags(item).length > 0 ? `by ${getArtistTags(item).join(', ')}` : ''">
+                                    <template x-if="hasArtistMismatch()">
+                                        <span class="mr-1 select-none inline-block text-xs" title="Artist tags differ between compared posts">⚠️</span>
+                                    </template>
+                                    <template x-if="getArtistTags(item).length > 0">
+                                        <span class="text-gray-400">by <span class="font-mono" :class="hasArtistMismatch() ? 'text-amber-400 font-semibold' : 'text-gray-400'" x-text="getArtistTags(item).join(', ')"></span></span>
+                                    </template>
+                                    <template x-if="getArtistTags(item).length === 0 && hasArtistMismatch()">
+                                        <span class="text-amber-400/90 italic font-mono">(no artist)</span>
+                                    </template>
+                                </div>
+
+                                <span class="font-mono text-[11px] shrink-0"
                                     x-html="image.formatSpecs(item, [currentPair.a, currentPair.b])">
                                 </span>
                             </div>

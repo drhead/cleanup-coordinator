@@ -85,6 +85,32 @@ export function ComparisonManager(resMgr) {
         },
 
         /**
+         * Gets sorted artist tags for a post item.
+         * @param {ClusterPost | null} item
+         * @returns {string[]}
+         */
+        getArtistTags(item) {
+            if (!item) return [];
+            /** @type {import('./tags.js').TagManager} */
+            const tagStore = /** @type {import('./tags.js').TagManager} */ (Alpine.store('tags'));
+            if (!tagStore) return [];
+            return tagStore.getArtistTags(item);
+        },
+
+        /**
+         * Checks if the artist tags between currentPair.a and currentPair.b differ.
+         * @returns {boolean}
+         */
+        hasArtistMismatch() {
+            if (!this.currentPair?.a || !this.currentPair?.b) return false;
+            const artistsA = this.getArtistTags(this.currentPair.a);
+            const artistsB = this.getArtistTags(this.currentPair.b);
+            if (artistsA.length !== artistsB.length) return true;
+            const setB = new Set(artistsB);
+            return artistsA.some(tag => !setB.has(tag));
+        },
+
+        /**
          * Gets the number of collapsibles (description and/or sources) for a post item.
          * @param {ClusterPost | null} item
          * @returns {number}
